@@ -18,7 +18,9 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
-  serverTimestamp
+  serverTimestamp,
+  getDoc,
+  setDoc
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 
@@ -528,15 +530,11 @@ function emptyState(
     <div class="empty-state">
 
       <div class="icon">
-
         ${icon}
-
       </div>
 
       <p>
-
         ${esc(text)}
-
       </p>
 
     </div>
@@ -807,11 +805,290 @@ async function removeItem(
 
 
 
+const LEGACY_STORAGE_KEY =
+  "mi_rinconcito_v1";
+
+
+
+async function migrateLegacyLocalData() {
+
+  if (!currentUser) {
+
+    return {
+      migrated:
+        false
+    };
+
+  }
+
+
+  const markerRef =
+    doc(
+
+      db,
+
+      "users",
+
+      currentUser.uid,
+
+      "meta",
+
+      "legacyMigrationV1"
+
+    );
+
+
+  try {
+
+    const marker =
+      await getDoc(
+        markerRef
+      );
+
+
+    if (
+      marker.exists()
+    ) {
+
+      return {
+
+        migrated:
+          false,
+
+        alreadyDone:
+          true
+
+      };
+
+    }
+
+
+    const raw =
+      localStorage.getItem(
+        LEGACY_STORAGE_KEY
+      );
+
+
+    if (!raw) {
+
+      return {
+
+        migrated:
+          false,
+
+        noLocalData:
+          true
+
+      };
+
+    }
+
+
+    const legacy =
+      JSON.parse(raw);
+
+
+    let imported =
+      0;
+
+
+    for (
+      const key
+      of
+      COLLECTION_KEYS
+    ) {
+
+      const items =
+        Array.isArray(
+          legacy?.[key]
+        )
+
+          ?
+
+          legacy[key]
+
+          :
+
+          [];
+
+
+      for (
+        const item
+        of
+        items
+      ) {
+
+        const clean =
+          {
+            ...item
+          };
+
+
+        const oldId =
+          clean.id
+
+            ?
+
+            String(
+              clean.id
+            )
+            .replaceAll(
+              "/",
+              "_"
+            )
+
+            :
+
+            null;
+
+
+        delete clean.id;
+
+
+        if (oldId) {
+
+          const targetRef =
+            doc(
+
+              db,
+
+              "users",
+
+              currentUser.uid,
+
+              key,
+
+              oldId
+
+            );
+
+
+          const existing =
+            await getDoc(
+              targetRef
+            );
+
+
+          if (
+            !existing.exists()
+          ) {
+
+            await setDoc(
+
+              targetRef,
+
+              {
+
+                ...clean,
+
+                migratedAt:
+                  serverTimestamp()
+
+              }
+
+            );
+
+
+            imported++;
+
+          }
+
+        }
+
+        else {
+
+          await addDoc(
+
+            userCollection(
+              key
+            ),
+
+            {
+
+              ...clean,
+
+              migratedAt:
+                serverTimestamp()
+
+            }
+
+          );
+
+
+          imported++;
+
+        }
+
+      }
+
+    }
+
+
+    await setDoc(
+
+      markerRef,
+
+      {
+
+        completed:
+          true,
+
+        importedItems:
+          imported,
+
+        completedAt:
+          serverTimestamp(),
+
+        source:
+          "localStorage",
+
+        version:
+          1
+
+      }
+
+    );
+
+
+    return {
+
+      migrated:
+        imported > 0,
+
+      imported
+
+    };
+
+  }
+
+  catch (error) {
+
+    console.error(
+      "No se pudieron recuperar los datos anteriores:",
+      error
+    );
+
+
+    return {
+
+      migrated:
+        false,
+
+      error
+
+    };
+
+  }
+
+}
+
+
+
 onAuthStateChanged(
 
   auth,
 
-  user => {
+  async user => {
 
     $("#loadingScreen")
       .hidden =
@@ -841,12 +1118,27 @@ onAuthStateChanged(
           "Usuario";
 
 
+      const migration =
+        await migrateLegacyLocalData();
+
+
       subscribeUserData();
 
 
       switchView(
         currentView
       );
+
+
+      if (
+        migration.migrated
+      ) {
+
+        showToast(
+          `Recuperé ${migration.imported} datos de tu versión anterior ♡`
+        );
+
+      }
 
     }
 
@@ -1373,14 +1665,12 @@ function upcomingEvents() {
 
 
   state.workTasks
-
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
-
     .forEach(
 
       t =>
@@ -1400,14 +1690,12 @@ function upcomingEvents() {
 
 
   state.personal
-
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
-
     .forEach(
 
       t =>
@@ -1427,12 +1715,10 @@ function upcomingEvents() {
 
 
   state.meetings
-
     .filter(
       t =>
         t.date
     )
-
     .forEach(
 
       t =>
@@ -1452,12 +1738,10 @@ function upcomingEvents() {
 
 
   state.trainings
-
     .filter(
       t =>
         t.date
     )
-
     .forEach(
 
       t =>
@@ -1568,11 +1852,7 @@ function timelineEvent(item) {
         </strong>
 
         <span>
-
-          ${shortMonth(
-            item.date
-          )}
-
+          ${shortMonth(item.date)}
         </span>
 
       </div>
@@ -2918,14 +3198,14 @@ function donutBlock(
         class="donut"
         style="
           background:
-            conic-gradient(
-              var(--rose-500)
-              0
-              ${p}%,
-              #f2e7eb
-              ${p}%
-              100%
-            )
+          conic-gradient(
+            var(--rose-500)
+            0
+            ${p}%,
+            #f2e7eb
+            ${p}%
+            100%
+          )
         "
       >
 
@@ -3145,14 +3425,12 @@ function calendarEvents() {
 
 
   state.workTasks
-
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
-
     .forEach(
 
       t =>
@@ -3173,14 +3451,12 @@ function calendarEvents() {
 
 
   state.personal
-
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
-
     .forEach(
 
       t =>
@@ -3201,12 +3477,10 @@ function calendarEvents() {
 
 
   state.meetings
-
     .filter(
       t =>
         t.date
     )
-
     .forEach(
 
       t =>
@@ -3227,12 +3501,10 @@ function calendarEvents() {
 
 
   state.trainings
-
     .filter(
       t =>
         t.date
     )
-
     .forEach(
 
       t =>
@@ -3357,42 +3629,32 @@ function renderCalendar() {
         new Date()
       )
 
-      ?
+        ?
 
-      "today"
+        "today"
 
-      :
+        :
 
-      "";
+        "";
 
 
     const dots =
       allEvents
-
         .filter(
           e =>
             e.date ===
             iso
         )
-
         .slice(
           0,
           4
         )
-
         .map(
 
-          e => `
-
-            <span
-              class="event-dot dot-${e.type}"
-              title="${esc(e.title)}"
-            ></span>
-
-          `
+          e =>
+            `<span class="event-dot dot-${e.type}" title="${esc(e.title)}"></span>`
 
         )
-
         .join("");
 
 
@@ -3496,282 +3758,187 @@ function renderAll() {
 const modalConfigs = {
 
   work: {
-
     title:
       "Nueva tarea de trabajo",
-
     label:
       "Tarea",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       false,
-
     project:
       true,
-
     priority:
       true,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   personal: {
-
     title:
       "Nueva actividad personal",
-
     label:
       "Actividad",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       true,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       true,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   project: {
-
     title:
       "Nuevo proyecto",
-
     label:
       "Nombre del proyecto",
-
     date:
       true,
-
     dateLabel:
       "Fecha objetivo",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       true,
-
     details:
       true
-
   },
-
 
   meeting: {
-
     title:
       "Nueva reunión",
-
     label:
       "Nombre de la reunión",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       true,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   training: {
-
     title:
       "Nueva capacitación",
-
     label:
       "Nombre de la capacitación",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       true,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   idea: {
-
     title:
       "Nueva idea",
-
     label:
       "Idea",
-
     date:
       false,
-
     dateLabel:
       "Fecha",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   note: {
-
     title:
       "Nueva nota",
-
     label:
       "Título",
-
     date:
       false,
-
     dateLabel:
       "Fecha",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
 
-
   goal: {
-
     title:
       "Nueva meta",
-
     label:
       "Meta",
-
     date:
       true,
-
     dateLabel:
       "Fecha objetivo",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       true,
-
     details:
       true
-
   }
 
 };
@@ -4027,7 +4194,6 @@ async function handleFormSubmit(event) {
 
     }
 
-
     else if (
       type ===
       "personal"
@@ -4053,7 +4219,6 @@ async function handleFormSubmit(event) {
       );
 
     }
-
 
     else if (
       type ===
@@ -4088,7 +4253,6 @@ async function handleFormSubmit(event) {
 
     }
 
-
     else if (
       type ===
       "meeting"
@@ -4101,7 +4265,6 @@ async function handleFormSubmit(event) {
 
     }
 
-
     else if (
       type ===
       "training"
@@ -4113,7 +4276,6 @@ async function handleFormSubmit(event) {
       );
 
     }
-
 
     else if (
       type ===
@@ -4137,7 +4299,6 @@ async function handleFormSubmit(event) {
 
     }
 
-
     else if (
       type ===
       "note"
@@ -4159,7 +4320,6 @@ async function handleFormSubmit(event) {
       );
 
     }
-
 
     else if (
       type ===
@@ -4365,7 +4525,8 @@ function applySearch() {
       .toLowerCase();
 
 
-  $$(
+  $$
+  (
     "[data-searchable]"
   )
   .forEach(
@@ -4373,7 +4534,6 @@ function applySearch() {
     el => {
 
       const text =
-
         (
           el.dataset.searchable
           ||
@@ -4387,11 +4547,9 @@ function applySearch() {
         "search-hidden",
 
         Boolean(
-
           q
           &&
           !text.includes(q)
-
         )
 
       );
@@ -4636,7 +4794,8 @@ function bindEvents() {
           filterBtn.dataset.taskFilter;
 
 
-        $$(
+        $$
+        (
           "[data-task-filter]"
         )
         .forEach(
