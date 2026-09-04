@@ -24,6 +24,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 
+/* =========================================================
+   FIREBASE
+========================================================= */
+
 const firebaseConfig = {
   apiKey: "AIzaSyACzQsjHBi6hJ61DrBt05jarP3isY_z9v4",
   authDomain: "mi-rinconcito-c01c8.firebaseapp.com",
@@ -47,6 +51,10 @@ setPersistence(
 ).catch(console.error);
 
 
+
+/* =========================================================
+   ESTADO
+========================================================= */
 
 const COLLECTION_KEYS = [
   "workTasks",
@@ -84,6 +92,17 @@ let calendarCursor = new Date();
 let editContext = null;
 
 let currentProjectForTask = null;
+
+
+/* FOTO PERSONAL */
+
+let personalPhotoDraft = null;
+
+let personalPhotoRemoved = false;
+
+const MAX_PHOTO_DATA_LENGTH = 650000;
+
+const PHOTO_MAX_DIMENSION = 1200;
 
 
 
@@ -170,6 +189,10 @@ const $$ =
 
 
 
+/* =========================================================
+   UTILIDADES
+========================================================= */
+
 function esc(value = "") {
 
   return String(value)
@@ -242,9 +265,7 @@ function toISO(date) {
 
   const m =
     String(
-      date.getMonth()
-      +
-      1
+      date.getMonth() + 1
     )
     .padStart(
       2,
@@ -412,19 +433,19 @@ function isSameDate(
   return (
 
     a.getFullYear()
-      ===
+    ===
     b.getFullYear()
 
     &&
 
     a.getMonth()
-      ===
+    ===
     b.getMonth()
 
     &&
 
     a.getDate()
-      ===
+    ===
     b.getDate()
 
   );
@@ -528,7 +549,7 @@ function showToast(message) {
           "show"
         ),
 
-      2600
+      2700
 
     );
 
@@ -560,6 +581,927 @@ function emptyState(
 }
 
 
+
+function saveItemButton() {
+
+  return (
+    $("#saveItemBtn")
+    ||
+    $('#itemForm button[type="submit"]')
+  );
+
+}
+
+
+
+/* =========================================================
+   FOTO PERSONAL
+========================================================= */
+
+function ensurePhotoStyles() {
+
+  if (
+    $("#miRinconcitoPhotoStyles")
+  ) {
+
+    return;
+
+  }
+
+
+  const style =
+    document.createElement(
+      "style"
+    );
+
+
+  style.id =
+    "miRinconcitoPhotoStyles";
+
+
+  style.textContent = `
+
+    .personal-photo-field {
+      grid-column: 1 / -1;
+    }
+
+    .personal-photo-box {
+      border: 1px dashed #efb8c7;
+      background: #fff8fa;
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .personal-photo-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      color: #6d5a63;
+      margin-bottom: 9px;
+    }
+
+    .personal-photo-input {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid #f1dfe5;
+      border-radius: 13px;
+      padding: 8px;
+      background: white;
+    }
+
+    .personal-photo-help {
+      margin: 7px 0 0;
+      color: #8c7a82;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .personal-photo-status {
+      margin-top: 8px;
+      color: #b84a68;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .personal-photo-preview {
+      margin-top: 12px;
+    }
+
+    .personal-photo-preview[hidden] {
+      display: none;
+    }
+
+    .personal-photo-preview img {
+      display: block;
+      width: min(300px, 100%);
+      max-height: 230px;
+      object-fit: cover;
+      border-radius: 17px;
+      border: 1px solid #f1dfe5;
+    }
+
+    .personal-photo-preview-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .photo-remove-btn {
+      border: 1px solid #f1dfe5;
+      background: white;
+      color: #b84a68;
+      border-radius: 11px;
+      padding: 7px 11px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .personal-plan-photo {
+      display: block;
+      width: min(310px, 100%);
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin: 0 0 12px;
+      border-radius: 18px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .personal-plan-photo img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      display: block;
+      border-radius: 18px;
+      border: 1px solid #f1dfe5;
+    }
+
+    .compact-photo {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      border-radius: 13px;
+      overflow: hidden;
+      border: 1px solid #f1dfe5;
+      background: #fff5f8;
+    }
+
+    .compact-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-viewer {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(44, 31, 37, .78);
+      display: grid;
+      place-items: center;
+      padding: 22px;
+    }
+
+    .photo-viewer[hidden] {
+      display: none;
+    }
+
+    .photo-viewer-card {
+      width: min(900px, 100%);
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+
+    .photo-viewer-card img {
+      max-width: 100%;
+      max-height: 82vh;
+      object-fit: contain;
+      border-radius: 22px;
+      box-shadow: 0 25px 80px rgba(0,0,0,.35);
+    }
+
+    .photo-viewer-close {
+      position: absolute;
+      top: -15px;
+      right: -5px;
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 50%;
+      background: white;
+      color: #b84a68;
+      font-size: 25px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
+
+    @media (max-width: 560px) {
+
+      .personal-plan-photo {
+        width: 100%;
+      }
+
+      .personal-photo-preview img {
+        width: 100%;
+      }
+
+      .photo-viewer {
+        padding: 12px;
+      }
+
+    }
+
+  `;
+
+
+  document.head
+    .appendChild(
+      style
+    );
+
+}
+
+
+
+function ensurePersonalPhotoUI() {
+
+  ensurePhotoStyles();
+
+
+  if (
+    $("#personalPhotoFieldWrap")
+  ) {
+
+    return;
+
+  }
+
+
+  const detailsWrap =
+    $("#detailsFieldWrap");
+
+
+  if (!detailsWrap)
+    return;
+
+
+  const wrap =
+    document.createElement(
+      "div"
+    );
+
+
+  wrap.id =
+    "personalPhotoFieldWrap";
+
+
+  wrap.className =
+    "field full personal-photo-field hidden-field";
+
+
+  wrap.innerHTML = `
+
+    <div class="personal-photo-box">
+
+      <span class="personal-photo-label">
+        📷 Foto del plan
+      </span>
+
+      <input
+        id="personalPhotoInput"
+        class="personal-photo-input"
+        type="file"
+        accept="image/*"
+      >
+
+      <p class="personal-photo-help">
+        Elige una foto desde tu celular o computador.
+        Se comprimirá automáticamente antes de guardarla.
+      </p>
+
+      <div
+        id="personalPhotoStatus"
+        class="personal-photo-status"
+      ></div>
+
+      <div
+        id="personalPhotoPreview"
+        class="personal-photo-preview"
+        hidden
+      >
+
+        <img
+          id="personalPhotoPreviewImage"
+          alt="Vista previa de la foto"
+        >
+
+        <div class="personal-photo-preview-actions">
+
+          <button
+            id="removePersonalPhotoBtn"
+            class="photo-remove-btn"
+            type="button"
+          >
+            Quitar foto
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  detailsWrap
+    .parentElement
+    .insertBefore(
+      wrap,
+      detailsWrap
+    );
+
+
+  $("#personalPhotoInput")
+    .addEventListener(
+      "change",
+      handlePersonalPhotoSelected
+    );
+
+
+  $("#removePersonalPhotoBtn")
+    .addEventListener(
+      "click",
+      removePersonalPhoto
+    );
+
+}
+
+
+
+function ensurePhotoViewer() {
+
+  if (
+    $("#photoViewer")
+  ) {
+
+    return;
+
+  }
+
+
+  const viewer =
+    document.createElement(
+      "div"
+    );
+
+
+  viewer.id =
+    "photoViewer";
+
+
+  viewer.className =
+    "photo-viewer";
+
+
+  viewer.hidden =
+    true;
+
+
+  viewer.innerHTML = `
+
+    <div class="photo-viewer-card">
+
+      <button
+        id="photoViewerClose"
+        class="photo-viewer-close"
+        type="button"
+        aria-label="Cerrar imagen"
+      >
+        ×
+      </button>
+
+      <img
+        id="photoViewerImage"
+        alt="Foto ampliada"
+      >
+
+    </div>
+
+  `;
+
+
+  document.body
+    .appendChild(
+      viewer
+    );
+
+
+  $("#photoViewerClose")
+    .addEventListener(
+      "click",
+      closePhotoViewer
+    );
+
+
+  viewer
+    .addEventListener(
+
+      "click",
+
+      event => {
+
+        if (
+          event.target ===
+          viewer
+        ) {
+
+          closePhotoViewer();
+
+        }
+
+      }
+
+    );
+
+}
+
+
+
+function readFileAsDataURL(file) {
+
+  return new Promise(
+
+    (resolve, reject) => {
+
+      const reader =
+        new FileReader();
+
+
+      reader.onload =
+        () =>
+          resolve(
+            reader.result
+          );
+
+
+      reader.onerror =
+        () =>
+          reject(
+            new Error(
+              "No se pudo leer la imagen."
+            )
+          );
+
+
+      reader.readAsDataURL(
+        file
+      );
+
+    }
+
+  );
+
+}
+
+
+
+function loadImage(dataUrl) {
+
+  return new Promise(
+
+    (resolve, reject) => {
+
+      const img =
+        new Image();
+
+
+      img.onload =
+        () =>
+          resolve(img);
+
+
+      img.onerror =
+        () =>
+          reject(
+            new Error(
+              "No se pudo procesar la imagen."
+            )
+          );
+
+
+      img.src =
+        dataUrl;
+
+    }
+
+  );
+
+}
+
+
+
+async function compressPersonalPhoto(file) {
+
+  if (
+    !file
+    ||
+    !file.type.startsWith(
+      "image/"
+    )
+  ) {
+
+    throw new Error(
+      "Selecciona un archivo de imagen."
+    );
+
+  }
+
+
+  const originalUrl =
+    await readFileAsDataURL(
+      file
+    );
+
+
+  const image =
+    await loadImage(
+      originalUrl
+    );
+
+
+  let maxDimension =
+    PHOTO_MAX_DIMENSION;
+
+
+  let quality =
+    0.80;
+
+
+  for (
+    let attempt = 0;
+    attempt < 10;
+    attempt++
+  ) {
+
+    const largestSide =
+      Math.max(
+        image.naturalWidth,
+        image.naturalHeight
+      );
+
+
+    const scale =
+      Math.min(
+        1,
+        maxDimension /
+        largestSide
+      );
+
+
+    const width =
+      Math.max(
+        1,
+        Math.round(
+          image.naturalWidth *
+          scale
+        )
+      );
+
+
+    const height =
+      Math.max(
+        1,
+        Math.round(
+          image.naturalHeight *
+          scale
+        )
+      );
+
+
+    const canvas =
+      document.createElement(
+        "canvas"
+      );
+
+
+    canvas.width =
+      width;
+
+
+    canvas.height =
+      height;
+
+
+    const ctx =
+      canvas.getContext(
+        "2d"
+      );
+
+
+    ctx.fillStyle =
+      "#ffffff";
+
+
+    ctx.fillRect(
+      0,
+      0,
+      width,
+      height
+    );
+
+
+    ctx.drawImage(
+      image,
+      0,
+      0,
+      width,
+      height
+    );
+
+
+    const compressed =
+      canvas.toDataURL(
+        "image/jpeg",
+        quality
+      );
+
+
+    if (
+      compressed.length
+      <=
+      MAX_PHOTO_DATA_LENGTH
+    ) {
+
+      return compressed;
+
+    }
+
+
+    if (
+      quality > 0.48
+    ) {
+
+      quality -= 0.10;
+
+    }
+
+    else {
+
+      maxDimension =
+        Math.round(
+          maxDimension *
+          0.82
+        );
+
+
+      quality =
+        0.68;
+
+    }
+
+  }
+
+
+  throw new Error(
+    "La foto sigue siendo demasiado pesada. Prueba con otra imagen."
+  );
+
+}
+
+
+
+async function handlePersonalPhotoSelected(event) {
+
+  const file =
+    event.target
+      .files?.[0];
+
+
+  if (!file)
+    return;
+
+
+  const status =
+    $("#personalPhotoStatus");
+
+
+  status.textContent =
+    "Comprimiendo foto...";
+
+
+  try {
+
+    const photo =
+      await compressPersonalPhoto(
+        file
+      );
+
+
+    personalPhotoDraft =
+      photo;
+
+
+    personalPhotoRemoved =
+      false;
+
+
+    renderPersonalPhotoPreview();
+
+
+    const approxKb =
+      Math.round(
+        photo.length /
+        1024
+      );
+
+
+    status.textContent =
+      `Foto lista · aprox. ${approxKb} KB`;
+
+  }
+
+  catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    personalPhotoDraft =
+      null;
+
+
+    status.textContent =
+      error.message
+      ||
+      "No se pudo procesar la foto.";
+
+
+    event.target.value =
+      "";
+
+
+    renderPersonalPhotoPreview();
+
+  }
+
+}
+
+
+
+function renderPersonalPhotoPreview() {
+
+  const preview =
+    $("#personalPhotoPreview");
+
+
+  const img =
+    $("#personalPhotoPreviewImage");
+
+
+  if (
+    !preview
+    ||
+    !img
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    personalPhotoDraft
+  ) {
+
+    img.src =
+      personalPhotoDraft;
+
+
+    preview.hidden =
+      false;
+
+  }
+
+  else {
+
+    img.removeAttribute(
+      "src"
+    );
+
+
+    preview.hidden =
+      true;
+
+  }
+
+}
+
+
+
+function removePersonalPhoto() {
+
+  personalPhotoDraft =
+    null;
+
+
+  personalPhotoRemoved =
+    true;
+
+
+  const input =
+    $("#personalPhotoInput");
+
+
+  if (input) {
+
+    input.value =
+      "";
+
+  }
+
+
+  const status =
+    $("#personalPhotoStatus");
+
+
+  if (status) {
+
+    status.textContent =
+      "La foto será eliminada al guardar los cambios.";
+
+  }
+
+
+  renderPersonalPhotoPreview();
+
+}
+
+
+
+function openPhotoViewerByPersonalId(id) {
+
+  const item =
+    state.personal.find(
+      p =>
+        p.id ===
+        id
+    );
+
+
+  if (
+    !item
+    ||
+    !item.photoData
+  ) {
+
+    return;
+
+  }
+
+
+  ensurePhotoViewer();
+
+
+  $("#photoViewerImage")
+    .src =
+      item.photoData;
+
+
+  $("#photoViewer")
+    .hidden =
+      false;
+
+
+  document.body.style.overflow =
+    "hidden";
+
+}
+
+
+
+function closePhotoViewer() {
+
+  const viewer =
+    $("#photoViewer");
+
+
+  if (!viewer)
+    return;
+
+
+  viewer.hidden =
+    true;
+
+
+  $("#photoViewerImage")
+    ?.removeAttribute(
+      "src"
+    );
+
+
+  if (
+    $("#modalBackdrop")?.hidden !== false
+    &&
+    $("#backupBackdrop")?.hidden !== false
+  ) {
+
+    document.body.style.overflow =
+      "";
+
+  }
+
+}
+
+
+
+/* =========================================================
+   FIRESTORE
+========================================================= */
 
 function clearState() {
 
@@ -679,7 +1621,9 @@ function subscribeUserData() {
       const unsubscribe =
         onSnapshot(
 
-          userCollection(key),
+          userCollection(
+            key
+          ),
 
           snapshot => {
 
@@ -847,10 +1791,9 @@ async function removeItem(
 
 
 
-/* =========================================
-   MIGRAR DATOS ANTIGUOS
-========================================= */
-
+/* =========================================================
+   MIGRACIÓN DATOS ANTIGUOS
+========================================================= */
 
 const LEGACY_STORAGE_KEY =
   "mi_rinconcito_v1";
@@ -1114,10 +2057,9 @@ async function migrateLegacyLocalData() {
 
 
 
-/* =========================================
+/* =========================================================
    RESPALDO PRIVADO
-========================================= */
-
+========================================================= */
 
 function sanitizeForBackup(item) {
 
@@ -1166,7 +2108,7 @@ function buildBackupObject() {
       "Mi Rinconcito",
 
     version:
-      2,
+      3,
 
     exportedAt:
       new Date()
@@ -1426,7 +2368,6 @@ function ensureBackupUI() {
           class="icon-btn"
           id="closeBackupBtn"
           type="button"
-          aria-label="Cerrar"
         >
           ×
         </button>
@@ -1434,8 +2375,8 @@ function ensureBackupUI() {
       </div>
 
       <p class="backup-help">
-        Puedes pegar aquí un respaldo para cargarlo en tu Firebase privado.
-        También puedes generar una copia de todo lo que ya tienes guardado.
+        Puedes pegar aquí un respaldo para cargarlo en Firebase.
+        Las fotos personales también quedan incluidas en el respaldo.
       </p>
 
       <textarea
@@ -1448,7 +2389,6 @@ function ensureBackupUI() {
       <p
         id="backupMessage"
         class="backup-help"
-        aria-live="polite"
       ></p>
 
       <div class="backup-actions">
@@ -1498,7 +2438,7 @@ function ensureBackupUI() {
 
 
   $("#closeBackupBtn")
-    ?.addEventListener(
+    .addEventListener(
       "click",
       closeBackupModal
     );
@@ -1526,7 +2466,7 @@ function ensureBackupUI() {
 
 
   $("#exportBackupBtn")
-    ?.addEventListener(
+    .addEventListener(
 
       "click",
 
@@ -1543,7 +2483,7 @@ function ensureBackupUI() {
 
         $("#backupMessage")
           .textContent =
-            "Respaldo generado. Puedes copiarlo o descargarlo.";
+            "Respaldo generado.";
 
       }
 
@@ -1551,14 +2491,14 @@ function ensureBackupUI() {
 
 
   $("#downloadBackupBtn")
-    ?.addEventListener(
+    .addEventListener(
       "click",
       downloadBackup
     );
 
 
   $("#importBackupBtn")
-    ?.addEventListener(
+    .addEventListener(
       "click",
       importBackupFromTextarea
     );
@@ -1569,36 +2509,18 @@ function ensureBackupUI() {
 
 function openBackupModal() {
 
-  const backdrop =
-    $("#backupBackdrop");
-
-
-  if (!backdrop)
-    return;
-
-
   $("#backupMessage")
     .textContent =
       "";
 
 
-  backdrop.hidden =
-    false;
+  $("#backupBackdrop")
+    .hidden =
+      false;
 
 
   document.body.style.overflow =
     "hidden";
-
-
-  setTimeout(
-
-    () =>
-      $("#backupTextarea")
-        ?.focus(),
-
-    0
-
-  );
 
 }
 
@@ -1606,16 +2528,9 @@ function openBackupModal() {
 
 function closeBackupModal() {
 
-  const backdrop =
-    $("#backupBackdrop");
-
-
-  if (!backdrop)
-    return;
-
-
-  backdrop.hidden =
-    true;
+  $("#backupBackdrop")
+    .hidden =
+      true;
 
 
   document.body.style.overflow =
@@ -1667,9 +2582,7 @@ function downloadBackup() {
 
 
   a.download =
-    `mi-rinconcito-respaldo-${toISO(
-      new Date()
-    )}.json`;
+    `mi-rinconcito-respaldo-${toISO(new Date())}.json`;
 
 
   document.body
@@ -1699,22 +2612,8 @@ function downloadBackup() {
 
 function normalizeBackup(raw) {
 
-  if (
-    !raw
-    ||
-    typeof raw !==
-    "object"
-  ) {
-
-    throw new Error(
-      "El respaldo no tiene un formato válido."
-    );
-
-  }
-
-
   const data =
-    raw.data
+    raw?.data
     &&
     typeof raw.data ===
     "object"
@@ -1726,6 +2625,20 @@ function normalizeBackup(raw) {
       :
 
       raw;
+
+
+  if (
+    !data
+    ||
+    typeof data !==
+    "object"
+  ) {
+
+    throw new Error(
+      "Respaldo inválido."
+    );
+
+  }
 
 
   const normalized =
@@ -1786,7 +2699,7 @@ async function importBackupFromTextarea() {
   if (!text) {
 
     message.textContent =
-      "Pega primero el respaldo que quieres importar.";
+      "Pega primero el respaldo.";
 
 
     return;
@@ -1829,10 +2742,6 @@ async function importBackupFromTextarea() {
 
   button.textContent =
     "Importando...";
-
-
-  message.textContent =
-    "Cargando datos en tu Firebase privado...";
 
 
   try {
@@ -1888,7 +2797,7 @@ async function importBackupFromTextarea() {
 
             `${key}_${Date.now()}_${Math.random()
               .toString(36)
-              .slice(2,8)}`;
+              .slice(2, 8)}`;
 
 
         delete clean.id;
@@ -1935,7 +2844,7 @@ async function importBackupFromTextarea() {
 
 
     message.textContent =
-      `Listo: ${count} registros cargados o actualizados.`;
+      `Listo: ${count} registros cargados.`;
 
 
     showToast(
@@ -1952,17 +2861,7 @@ async function importBackupFromTextarea() {
 
 
     message.textContent =
-
-      error.code ===
-      "permission-denied"
-
-        ?
-
-        "Firestore bloqueó la importación. Revisa las reglas."
-
-        :
-
-        "No se pudo terminar la importación.";
+      "No se pudo terminar la importación.";
 
   }
 
@@ -1981,10 +2880,9 @@ async function importBackupFromTextarea() {
 
 
 
-/* =========================================
+/* =========================================================
    AUTENTICACIÓN
-========================================= */
-
+========================================================= */
 
 onAuthStateChanged(
 
@@ -2022,6 +2920,10 @@ onAuthStateChanged(
 
       ensureBackupUI();
 
+      ensurePersonalPhotoUI();
+
+      ensurePhotoViewer();
+
 
       const migration =
         await migrateLegacyLocalData();
@@ -2040,7 +2942,7 @@ onAuthStateChanged(
       ) {
 
         showToast(
-          `Recuperé ${migration.imported} datos de tu versión anterior ♡`
+          `Recuperé ${migration.imported} datos anteriores ♡`
         );
 
       }
@@ -2115,7 +3017,7 @@ function authErrorMessage(error) {
     )
   ) {
 
-    return "Demasiados intentos. Espera un momento y vuelve a intentar.";
+    return "Demasiados intentos. Espera un momento.";
 
   }
 
@@ -2126,7 +3028,7 @@ function authErrorMessage(error) {
     )
   ) {
 
-    return "No se pudo conectar. Revisa tu internet.";
+    return "Revisa tu conexión a internet.";
 
   }
 
@@ -2137,12 +3039,12 @@ function authErrorMessage(error) {
     )
   ) {
 
-    return "Este dominio de GitHub aún no está autorizado en Firebase.";
+    return "El dominio de GitHub no está autorizado en Firebase.";
 
   }
 
 
-  return "No se pudo iniciar sesión. Revisa los datos e intenta nuevamente.";
+  return "No se pudo iniciar sesión.";
 
 }
 
@@ -2173,10 +3075,6 @@ async function handleLogin(event) {
 
 
   message.textContent =
-    "";
-
-
-  message.style.color =
     "";
 
 
@@ -2254,10 +3152,6 @@ async function handleResetPassword() {
       "Escribe primero tu correo.";
 
 
-    $("#loginEmail")
-      .focus();
-
-
     return;
 
   }
@@ -2274,12 +3168,8 @@ async function handleResetPassword() {
     );
 
 
-    message.style.color =
-      "#4f8b64";
-
-
     message.textContent =
-      "Te envié un correo para cambiar tu contraseña.";
+      "Te envié un correo para cambiar la contraseña.";
 
   }
 
@@ -2290,12 +3180,8 @@ async function handleResetPassword() {
     );
 
 
-    message.style.color =
-      "";
-
-
     message.textContent =
-      "No se pudo enviar el correo de recuperación.";
+      "No se pudo enviar el correo.";
 
   }
 
@@ -2311,11 +3197,6 @@ async function handleLogout() {
       auth
     );
 
-
-    showToast(
-      "Sesión cerrada"
-    );
-
   }
 
   catch (error) {
@@ -2324,21 +3205,15 @@ async function handleLogout() {
       error
     );
 
-
-    showToast(
-      "No se pudo cerrar la sesión."
-    );
-
   }
 
 }
 
 
 
-/* =========================================
+/* =========================================================
    NAVEGACIÓN
-========================================= */
-
+========================================================= */
 
 function switchView(view) {
 
@@ -2366,17 +3241,10 @@ function switchView(view) {
     );
 
 
-  const target =
-    $(`#view-${view}`);
-
-
-  if (target) {
-
-    target.classList.add(
+  $(`#view-${view}`)
+    ?.classList.add(
       "active"
     );
-
-  }
 
 
   $$(".nav-item")
@@ -2409,78 +3277,37 @@ function switchView(view) {
       "open"
     );
 
-
-  window.scrollTo({
-
-    top:
-      0,
-
-    behavior:
-      "smooth"
-
-  });
-
 }
 
 
 
-/* =========================================
-   PROYECTOS + SUBTAREAS
-========================================= */
-
+/* =========================================================
+   PROYECTOS
+========================================================= */
 
 function tasksForProject(projectId) {
 
   return state.projectTasks
 
     .filter(
-
       task =>
         task.projectId ===
         projectId
-
     )
 
     .sort(
 
-      (a,b) => {
+      (a, b) =>
 
-        const doneDiff =
-
-          Number(
-            Boolean(
-              a.done
-            )
-          )
-
-          -
-
-          Number(
-            Boolean(
-              b.done
-            )
-          );
-
-
-        if (doneDiff) {
-
-          return doneDiff;
-
-        }
-
-
-        return (
-          a.title
-          ||
-          ""
+        Number(
+          Boolean(a.done)
         )
-        .localeCompare(
-          b.title
-          ||
-          ""
-        );
 
-      }
+        -
+
+        Number(
+          Boolean(b.done)
+        )
 
     );
 
@@ -2490,14 +3317,13 @@ function tasksForProject(projectId) {
 
 function projectProgress(project) {
 
-  const mode =
-    project.progressMode
-    ||
-    "manual";
-
-
   if (
-    mode !==
+    (
+      project.progressMode
+      ||
+      "manual"
+    )
+    !==
     "auto"
   ) {
 
@@ -2516,13 +3342,8 @@ function projectProgress(project) {
     );
 
 
-  if (
-    !tasks.length
-  ) {
-
+  if (!tasks.length)
     return 0;
-
-  }
 
 
   const done =
@@ -2551,11 +3372,9 @@ async function toggleProjectProgressMode(projectId) {
 
   const project =
     state.projects.find(
-
       item =>
         item.id ===
         projectId
-
     );
 
 
@@ -2582,223 +3401,26 @@ async function toggleProjectProgressMode(projectId) {
       "auto";
 
 
-  try {
+  await updateItem(
 
-    await updateItem(
+    "projects",
 
-      "projects",
+    projectId,
 
-      projectId,
+    {
+      progressMode:
+        nextMode
+    }
 
-      {
-        progressMode:
-          nextMode
-      }
-
-    );
-
-
-    showToast(
-
-      nextMode ===
-      "auto"
-
-        ?
-
-        "Avance automático activado"
-
-        :
-
-        "Avance manual activado"
-
-    );
-
-  }
-
-  catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    showToast(
-      "No se pudo cambiar el modo de avance."
-    );
-
-  }
+  );
 
 }
 
 
 
-/* =========================================
-   RENDERIZADO
-========================================= */
-
-
-function statCard(
-  icon,
-  label,
-  value,
-  sub
-) {
-
-  return `
-
-    <div class="stat-card">
-
-      <div class="stat-top">
-
-        <div>
-
-          <div class="stat-label">
-            ${esc(label)}
-          </div>
-
-          <div class="stat-value">
-            ${esc(value)}
-          </div>
-
-          <div class="stat-sub">
-            ${esc(sub)}
-          </div>
-
-        </div>
-
-        <div class="stat-icon">
-          ${icon}
-        </div>
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-
-
-function compactTask(task) {
-
-  return `
-
-    <label
-      class="compact-item ${task.done ? "done" : ""}"
-      data-searchable="${esc(
-        `${task.title} ${task.project || ""} ${task.priority || ""}`
-      )}"
-    >
-
-      <input
-        class="check js-toggle-work"
-        type="checkbox"
-        data-id="${task.id}"
-        ${task.done ? "checked" : ""}
-      >
-
-      <span class="compact-main">
-
-        <span class="compact-title">
-          ${esc(task.title)}
-        </span>
-
-        <span class="compact-meta">
-
-          ${esc(
-            task.project
-            ||
-            "General"
-          )}
-
-          ·
-
-          ${formatDate(
-            task.date
-          )}
-
-          ·
-
-          ${esc(
-            task.priority
-            ||
-            "Media"
-          )}
-
-        </span>
-
-      </span>
-
-    </label>
-
-  `;
-
-}
-
-
-
-function compactPersonal(item) {
-
-  return `
-
-    <label
-      class="compact-item ${item.done ? "done" : ""}"
-      data-searchable="${esc(
-        `${item.title} ${item.category || ""}`
-      )}"
-    >
-
-      <input
-        class="check js-toggle-personal"
-        type="checkbox"
-        data-id="${item.id}"
-        ${item.done ? "checked" : ""}
-      >
-
-      <span class="compact-main">
-
-        <span class="compact-title">
-          ${esc(item.title)}
-        </span>
-
-        <span class="compact-meta">
-
-          ${esc(
-            item.category
-            ||
-            "Personal"
-          )}
-
-          ·
-
-          ${formatDate(
-            item.date
-          )}
-
-          ${
-            item.time
-
-              ?
-
-              ` · ${esc(item.time)}`
-
-              :
-
-              ""
-          }
-
-        </span>
-
-      </span>
-
-    </label>
-
-  `;
-
-}
-
-
+/* =========================================================
+   AGENDA
+========================================================= */
 
 function upcomingEvents() {
 
@@ -2810,8 +3432,7 @@ function upcomingEvents() {
 
     .filter(
       t =>
-        !t.done
-        &&
+        !t.done &&
         t.date
     )
 
@@ -2837,8 +3458,7 @@ function upcomingEvents() {
 
     .filter(
       t =>
-        !t.done
-        &&
+        !t.done &&
         t.date
     )
 
@@ -2913,19 +3533,15 @@ function upcomingEvents() {
   return items
 
     .filter(
-
-      i =>
+      item =>
         daysUntil(
-          i.date
-        )
-        >=
-        0
-
+          item.date
+        ) >= 0
     )
 
     .sort(
 
-      (a,b) =>
+      (a, b) =>
 
         (
           a.date
@@ -2938,20 +3554,173 @@ function upcomingEvents() {
           "9999"
         )
 
-        ||
-
-        (
-          a.time
-          ||
-          ""
-        )
-        .localeCompare(
-          b.time
-          ||
-          ""
-        )
-
     );
+
+}
+
+
+
+function statCard(
+  icon,
+  label,
+  value,
+  sub
+) {
+
+  return `
+
+    <div class="stat-card">
+
+      <div class="stat-top">
+
+        <div>
+
+          <div class="stat-label">
+            ${esc(label)}
+          </div>
+
+          <div class="stat-value">
+            ${esc(value)}
+          </div>
+
+          <div class="stat-sub">
+            ${esc(sub)}
+          </div>
+
+        </div>
+
+        <div class="stat-icon">
+          ${icon}
+        </div>
+
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+
+function compactTask(task) {
+
+  return `
+
+    <label
+      class="compact-item ${task.done ? "done" : ""}"
+    >
+
+      <input
+        class="check js-toggle-work"
+        type="checkbox"
+        data-id="${task.id}"
+        ${task.done ? "checked" : ""}
+      >
+
+      <span class="compact-main">
+
+        <span class="compact-title">
+          ${esc(task.title)}
+        </span>
+
+        <span class="compact-meta">
+
+          ${esc(
+            task.project
+            ||
+            "General"
+          )}
+
+          ·
+
+          ${formatDate(task.date)}
+
+        </span>
+
+      </span>
+
+    </label>
+
+  `;
+
+}
+
+
+
+function compactPersonal(item) {
+
+  return `
+
+    <label
+      class="compact-item ${item.done ? "done" : ""}"
+    >
+
+      <input
+        class="check js-toggle-personal"
+        type="checkbox"
+        data-id="${item.id}"
+        ${item.done ? "checked" : ""}
+      >
+
+      ${
+        item.photoData
+
+          ?
+
+          `
+          <span class="compact-photo">
+
+            <img
+              src="${esc(item.photoData)}"
+              alt=""
+            >
+
+          </span>
+          `
+
+          :
+
+          ""
+      }
+
+      <span class="compact-main">
+
+        <span class="compact-title">
+          ${esc(item.title)}
+        </span>
+
+        <span class="compact-meta">
+
+          ${esc(
+            item.category
+            ||
+            "Personal"
+          )}
+
+          ·
+
+          ${formatDate(item.date)}
+
+          ${
+            item.time
+
+              ?
+
+              ` · ${esc(item.time)}`
+
+              :
+
+              ""
+          }
+
+        </span>
+
+      </span>
+
+    </label>
+
+  `;
 
 }
 
@@ -2960,41 +3729,27 @@ function upcomingEvents() {
 function timelineEvent(item) {
 
   const typeClass =
-
     {
-
       work:
         "type-work",
-
       personal:
         "type-personal",
-
       meeting:
         "type-meeting",
-
       training:
         "type-training"
-
     }[item.type]
-
     ||
-
     "type-work";
 
 
   return `
 
-    <div
-      class="timeline-item"
-      data-searchable="${esc(
-        `${item.title} ${item.typeLabel}`
-      )}"
-    >
+    <div class="timeline-item">
 
       <div class="date-chip">
 
         <strong>
-
           ${formatDate(
             item.date,
             {
@@ -3002,7 +3757,6 @@ function timelineEvent(item) {
                 "2-digit"
             }
           )}
-
         </strong>
 
         <span>
@@ -3031,9 +3785,7 @@ function timelineEvent(item) {
               ""
           }
 
-          ${esc(
-            item.typeLabel
-          )}
+          ${esc(item.typeLabel)}
 
         </div>
 
@@ -3052,6 +3804,10 @@ function timelineEvent(item) {
 }
 
 
+
+/* =========================================================
+   RENDER INICIO
+========================================================= */
 
 function renderHome() {
 
@@ -3113,21 +3869,20 @@ function renderHome() {
         "también hay tiempo para ti"
       )
 
-    ]
-    .join("");
+    ].join("");
 
 
   const priorities =
     [...state.workTasks]
 
       .filter(
-        t =>
-          !t.done
+        task =>
+          !task.done
       )
 
       .sort(
 
-        (a,b) =>
+        (a, b) =>
 
           priorityWeight(
             a.priority
@@ -3137,19 +3892,6 @@ function renderHome() {
 
           priorityWeight(
             b.priority
-          )
-
-          ||
-
-          (
-            a.date
-            ||
-            "9999"
-          )
-          .localeCompare(
-            b.date
-            ||
-            "9999"
           )
 
       )
@@ -3177,7 +3919,7 @@ function renderHome() {
 
         emptyState(
           "♡",
-          "Aún no tienes tareas pendientes. Agrega la primera cuando quieras."
+          "No tienes tareas pendientes."
         );
 
 
@@ -3230,13 +3972,9 @@ function renderHome() {
 
             ${
               next.time
-
                 ?
-
                 ` · ${esc(next.time)}`
-
                 :
-
                 ""
             }
 
@@ -3264,15 +4002,10 @@ function renderHome() {
         [...state.projects]
 
           .sort(
-
-            (a,b) =>
-
+            (a, b) =>
               projectProgress(b)
-
               -
-
               projectProgress(a)
-
           )
 
           .slice(
@@ -3292,12 +4025,7 @@ function renderHome() {
 
               return `
 
-                <div
-                  class="project-mini"
-                  data-searchable="${esc(
-                    `${p.title} ${p.details || ""}`
-                  )}"
-                >
+                <div class="project-mini">
 
                   <div>
 
@@ -3334,7 +4062,7 @@ function renderHome() {
 
         emptyState(
           "▱",
-          "Todavía no has creado proyectos."
+          "Todavía no tienes proyectos."
         );
 
 
@@ -3348,7 +4076,7 @@ function renderHome() {
 
       .sort(
 
-        (a,b) =>
+        (a, b) =>
 
           (
             a.date
@@ -3386,7 +4114,7 @@ function renderHome() {
 
         emptyState(
           "♥",
-          "Agrega salidas, panoramas o cosas que quieras hacer para ti."
+          "Agrega algo que quieras hacer para ti."
         );
 
 
@@ -3415,12 +4143,16 @@ function renderHome() {
 
         emptyState(
           "▣",
-          "Tu agenda está libre por ahora."
+          "Tu agenda está libre."
         );
 
 }
 
 
+
+/* =========================================================
+   TAREAS TRABAJO
+========================================================= */
 
 function renderWorkTasks() {
 
@@ -3429,33 +4161,16 @@ function renderWorkTasks() {
 
       .sort(
 
-        (a,b) =>
+        (a, b) =>
 
           Number(
-            Boolean(
-              a.done
-            )
+            Boolean(a.done)
           )
 
           -
 
           Number(
-            Boolean(
-              b.done
-            )
-          )
-
-          ||
-
-          (
-            a.date
-            ||
-            "9999"
-          )
-          .localeCompare(
-            b.date
-            ||
-            "9999"
+            Boolean(b.done)
           )
 
       );
@@ -3497,7 +4212,6 @@ function renderWorkTasks() {
         ?
 
         tasks
-
           .map(
 
             t => `
@@ -3505,7 +4219,7 @@ function renderWorkTasks() {
             <article
               class="item-card ${t.done ? "done" : ""}"
               data-searchable="${esc(
-                `${t.title} ${t.project || ""} ${t.priority || ""} ${t.details || ""}`
+                `${t.title} ${t.project || ""}`
               )}"
             >
 
@@ -3533,10 +4247,6 @@ function renderWorkTasks() {
                   </span>
 
                   <span>
-                    •
-                  </span>
-
-                  <span>
                     ${formatDate(t.date)}
                   </span>
 
@@ -3547,13 +4257,11 @@ function renderWorkTasks() {
                       "Media"
                     )}"
                   >
-
                     ${esc(
                       t.priority
                       ||
                       "Media"
                     )}
-
                   </span>
 
                 </div>
@@ -3579,7 +4287,6 @@ function renderWorkTasks() {
                   data-type="work"
                   data-id="${t.id}"
                   type="button"
-                  title="Editar"
                 >
                   ✎
                 </button>
@@ -3589,7 +4296,6 @@ function renderWorkTasks() {
                   data-type="work"
                   data-id="${t.id}"
                   type="button"
-                  title="Eliminar"
                 >
                   ×
                 </button>
@@ -3598,9 +4304,7 @@ function renderWorkTasks() {
 
             </article>
 
-          `
-
-          )
+          `)
 
           .join("")
 
@@ -3608,12 +4312,16 @@ function renderWorkTasks() {
 
         emptyState(
           "✓",
-          "No hay tareas en este filtro."
+          "No hay tareas."
         );
 
 }
 
 
+
+/* =========================================================
+   COSAS PERSONALES + FOTOS
+========================================================= */
 
 function renderPersonal() {
 
@@ -3622,33 +4330,16 @@ function renderPersonal() {
 
       .sort(
 
-        (a,b) =>
+        (a, b) =>
 
           Number(
-            Boolean(
-              a.done
-            )
+            Boolean(a.done)
           )
 
           -
 
           Number(
-            Boolean(
-              b.done
-            )
-          )
-
-          ||
-
-          (
-            a.date
-            ||
-            "9999"
-          )
-          .localeCompare(
-            b.date
-            ||
-            "9999"
+            Boolean(b.done)
           )
 
       );
@@ -3662,7 +4353,6 @@ function renderPersonal() {
         ?
 
         items
-
           .map(
 
             p => `
@@ -3682,6 +4372,32 @@ function renderPersonal() {
               >
 
               <div>
+
+                ${
+                  p.photoData
+
+                    ?
+
+                    `
+                    <button
+                      class="personal-plan-photo js-open-photo"
+                      data-id="${p.id}"
+                      type="button"
+                      title="Ver foto"
+                    >
+
+                      <img
+                        src="${esc(p.photoData)}"
+                        alt="${esc(p.title)}"
+                      >
+
+                    </button>
+                    `
+
+                    :
+
+                    ""
+                }
 
                 <div class="item-title">
                   ${esc(p.title)}
@@ -3738,7 +4454,6 @@ function renderPersonal() {
                   data-type="personal"
                   data-id="${p.id}"
                   type="button"
-                  title="Editar"
                 >
                   ✎
                 </button>
@@ -3748,7 +4463,6 @@ function renderPersonal() {
                   data-type="personal"
                   data-id="${p.id}"
                   type="button"
-                  title="Eliminar"
                 >
                   ×
                 </button>
@@ -3757,9 +4471,7 @@ function renderPersonal() {
 
             </article>
 
-          `
-
-          )
+          `)
 
           .join("")
 
@@ -3767,12 +4479,16 @@ function renderPersonal() {
 
         emptyState(
           "♥",
-          "Agrega algo que quieras hacer para ti."
+          "Agrega un panorama, salida o algo que quieras hacer."
         );
 
 }
 
 
+
+/* =========================================================
+   PROYECTOS
+========================================================= */
 
 function renderProjects() {
 
@@ -3786,9 +4502,7 @@ function renderProjects() {
         [...state.projects]
 
           .sort(
-
-            (a,b) =>
-
+            (a, b) =>
               (
                 a.title
                 ||
@@ -3799,7 +4513,6 @@ function renderProjects() {
                 ||
                 ""
               )
-
           )
 
           .map(
@@ -3826,20 +4539,15 @@ function renderProjects() {
 
               const doneCount =
                 tasks.filter(
-                  task =>
-                    task.done
+                  t =>
+                    t.done
                 )
                 .length;
 
 
               return `
 
-                <article
-                  class="project-card"
-                  data-searchable="${esc(
-                    `${p.title} ${p.details || ""} ${tasks.map(t => t.title).join(" ")}`
-                  )}"
-                >
+                <article class="project-card">
 
                   <div class="project-card-head">
 
@@ -3862,7 +4570,6 @@ function renderProjects() {
                         data-type="project"
                         data-id="${p.id}"
                         type="button"
-                        title="Editar"
                       >
                         ✎
                       </button>
@@ -3872,7 +4579,6 @@ function renderProjects() {
                         data-type="project"
                         data-id="${p.id}"
                         type="button"
-                        title="Eliminar"
                       >
                         ×
                       </button>
@@ -3885,7 +4591,7 @@ function renderProjects() {
                     ${esc(
                       p.details
                       ||
-                      "Sin descripción todavía."
+                      "Sin descripción."
                     )}
                   </p>
 
@@ -3957,16 +4663,13 @@ function renderProjects() {
 
                     <span>
                       Meta:
-                      ${formatDate(
-                        p.target
-                      )}
+                      ${formatDate(p.target)}
                     </span>
 
                     <span>
 
                       ${
-                        pct >=
-                        100
+                        pct >= 100
 
                           ?
 
@@ -4009,58 +4712,52 @@ function renderProjects() {
 
                           ?
 
-                          tasks
+                          tasks.map(
 
-                            .map(
+                            task => `
 
-                              task => `
+                            <div
+                              class="project-task-row ${task.done ? "done" : ""}"
+                            >
 
-                              <div
-                                class="project-task-row ${task.done ? "done" : ""}"
+                              <input
+                                class="js-toggle-project-task"
+                                type="checkbox"
+                                data-id="${task.id}"
+                                ${task.done ? "checked" : ""}
                               >
 
-                                <input
-                                  class="js-toggle-project-task"
-                                  type="checkbox"
+                              <span class="project-task-name">
+                                ${esc(task.title)}
+                              </span>
+
+                              <div class="project-task-actions">
+
+                                <button
+                                  class="mini-btn edit js-edit"
+                                  data-type="projectTask"
                                   data-id="${task.id}"
-                                  ${task.done ? "checked" : ""}
+                                  type="button"
                                 >
+                                  ✎
+                                </button>
 
-                                <span class="project-task-name">
-                                  ${esc(task.title)}
-                                </span>
-
-                                <div class="project-task-actions">
-
-                                  <button
-                                    class="mini-btn edit js-edit"
-                                    data-type="projectTask"
-                                    data-id="${task.id}"
-                                    type="button"
-                                    title="Editar"
-                                  >
-                                    ✎
-                                  </button>
-
-                                  <button
-                                    class="mini-btn delete js-delete"
-                                    data-type="projectTask"
-                                    data-id="${task.id}"
-                                    type="button"
-                                    title="Eliminar"
-                                  >
-                                    ×
-                                  </button>
-
-                                </div>
+                                <button
+                                  class="mini-btn delete js-delete"
+                                  data-type="projectTask"
+                                  data-id="${task.id}"
+                                  type="button"
+                                >
+                                  ×
+                                </button>
 
                               </div>
 
-                            `
+                            </div>
 
-                            )
+                          `)
 
-                            .join("")
+                          .join("")
 
                           :
 
@@ -4096,6 +4793,10 @@ function renderProjects() {
 
 
 
+/* =========================================================
+   REUNIONES Y CAPACITACIONES
+========================================================= */
+
 function renderEventCards(
   items,
   type,
@@ -4107,7 +4808,7 @@ function renderEventCards(
 
       .sort(
 
-        (a,b) =>
+        (a, b) =>
 
           (
             a.date
@@ -4120,19 +4821,6 @@ function renderEventCards(
             "9999"
           )
 
-          ||
-
-          (
-            a.time
-            ||
-            ""
-          )
-          .localeCompare(
-            b.time
-            ||
-            ""
-          )
-
       );
 
 
@@ -4140,135 +4828,110 @@ function renderEventCards(
 
     ?
 
-    list
+    list.map(
 
-      .map(
+      item => `
 
-        item => `
+      <article class="event-card">
 
-        <article
-          class="event-card"
-          data-searchable="${esc(
-            `${item.title} ${item.details || ""}`
-          )}"
-        >
+        <div class="event-date">
 
-          <div class="event-date">
+          <strong>
 
-            <strong>
-
-              ${formatDate(
-                item.date,
-                {
-                  day:
-                    "2-digit"
-                }
-              )}
-
-            </strong>
-
-            <span>
-              ${shortMonth(item.date)}
-            </span>
-
-          </div>
-
-          <div>
-
-            <span
-              class="type-pill ${
-                type ===
-                "meeting"
-
-                  ?
-
-                  "type-meeting"
-
-                  :
-
-                  "type-training"
-              }"
-            >
-              ${label}
-            </span>
-
-            <h3>
-              ${esc(item.title)}
-            </h3>
-
-            <p>
-
-              ${
-                item.time
-
-                  ?
-
-                  `Hora: ${esc(item.time)}<br>`
-
-                  :
-
-                  ""
+            ${formatDate(
+              item.date,
+              {
+                day:
+                  "2-digit"
               }
+            )}
 
-              ${esc(
-                item.details
-                ||
-                "Sin detalles."
-              )}
+          </strong>
 
-            </p>
+          <span>
+            ${shortMonth(item.date)}
+          </span>
 
-          </div>
+        </div>
 
-          <div class="item-actions">
+        <div>
 
-            <button
-              class="mini-btn edit js-edit"
-              data-type="${type}"
-              data-id="${item.id}"
-              type="button"
-              title="Editar"
-            >
-              ✎
-            </button>
+          <span
+            class="type-pill ${
+              type ===
+              "meeting"
 
-            <button
-              class="mini-btn delete js-delete"
-              data-type="${type}"
-              data-id="${item.id}"
-              type="button"
-              title="Eliminar"
-            >
-              ×
-            </button>
+                ?
 
-          </div>
+                "type-meeting"
 
-        </article>
+                :
 
-      `
+                "type-training"
+            }"
+          >
 
-      )
+            ${label}
 
-      .join("")
+          </span>
+
+          <h3>
+            ${esc(item.title)}
+          </h3>
+
+          <p>
+
+            ${
+              item.time
+                ?
+                `Hora: ${esc(item.time)}<br>`
+                :
+                ""
+            }
+
+            ${esc(
+              item.details
+              ||
+              "Sin detalles."
+            )}
+
+          </p>
+
+        </div>
+
+        <div class="item-actions">
+
+          <button
+            class="mini-btn edit js-edit"
+            data-type="${type}"
+            data-id="${item.id}"
+            type="button"
+          >
+            ✎
+          </button>
+
+          <button
+            class="mini-btn delete js-delete"
+            data-type="${type}"
+            data-id="${item.id}"
+            type="button"
+          >
+            ×
+          </button>
+
+        </div>
+
+      </article>
+
+    `)
+
+    .join("")
 
     :
 
     emptyState(
-
-      type ===
-      "meeting"
-
-        ?
-
-        "♙"
-
-        :
-
-        "✦",
-
+      "♡",
       `No hay ${label.toLowerCase()}s registradas.`
-
     );
 
 }
@@ -4280,13 +4943,9 @@ function renderMeetings() {
   $("#meetingList")
     .innerHTML =
       renderEventCards(
-
         state.meetings,
-
         "meeting",
-
         "Reunión"
-
       );
 
 }
@@ -4298,18 +4957,18 @@ function renderTrainings() {
   $("#trainingList")
     .innerHTML =
       renderEventCards(
-
         state.trainings,
-
         "training",
-
         "Capacitación"
-
       );
 
 }
 
 
+
+/* =========================================================
+   IDEAS
+========================================================= */
 
 function renderIdeas() {
 
@@ -4320,77 +4979,70 @@ function renderIdeas() {
 
         ?
 
-        state.ideas
+        state.ideas.map(
 
-          .map(
+          i => `
 
-            i => `
+          <article class="idea-card">
 
-            <article
-              class="idea-card"
-              data-searchable="${esc(
-                `${i.title} ${i.details || ""}`
-              )}"
-            >
+            <div class="idea-bulb">
+              ✧
+            </div>
 
-              <div class="idea-bulb">
-                ✧
-              </div>
+            <h3>
+              ${esc(i.title)}
+            </h3>
 
-              <h3>
-                ${esc(i.title)}
-              </h3>
+            <p>
+              ${esc(
+                i.details
+                ||
+                ""
+              )}
+            </p>
 
-              <p>
-                ${esc(
-                  i.details
-                  ||
-                  "Sin descripción."
-                )}
-              </p>
+            <div class="mini-action-group">
 
-              <div class="mini-action-group">
+              <button
+                class="mini-btn edit js-edit"
+                data-type="idea"
+                data-id="${i.id}"
+                type="button"
+              >
+                ✎
+              </button>
 
-                <button
-                  class="mini-btn edit js-edit"
-                  data-type="idea"
-                  data-id="${i.id}"
-                  type="button"
-                  title="Editar"
-                >
-                  ✎
-                </button>
+              <button
+                class="mini-btn delete js-delete"
+                data-type="idea"
+                data-id="${i.id}"
+                type="button"
+              >
+                ×
+              </button>
 
-                <button
-                  class="mini-btn delete js-delete"
-                  data-type="idea"
-                  data-id="${i.id}"
-                  type="button"
-                  title="Eliminar"
-                >
-                  ×
-                </button>
+            </div>
 
-              </div>
+          </article>
 
-            </article>
+        `)
 
-          `
-
-          )
-
-          .join("")
+        .join("")
 
         :
 
         emptyState(
           "✧",
-          "Guarda aquí todo lo que se te ocurra para más adelante."
+          "Guarda aquí tus ideas."
         );
 
 }
 
 
+
+/* =========================================================
+   NOTAS
+========================================================= */
 
 function renderNotes() {
 
@@ -4401,73 +5053,66 @@ function renderNotes() {
 
         ?
 
-        state.notes
+        state.notes.map(
 
-          .map(
+          n => `
 
-            n => `
+          <article class="note-card">
 
-            <article
-              class="note-card"
-              data-searchable="${esc(
-                `${n.title} ${n.details || ""}`
-              )}"
-            >
+            <div class="note-pin">
+              ●
+            </div>
 
-              <div class="note-pin">
-                ●
-              </div>
+            <h3>
+              ${esc(n.title)}
+            </h3>
 
-              <h3>
-                ${esc(n.title)}
-              </h3>
+            <p>
+              ${esc(n.details || "")}
+            </p>
 
-              <p>
-                ${esc(n.details || "")}
-              </p>
+            <div class="note-actions mini-action-group">
 
-              <div class="note-actions mini-action-group">
+              <button
+                class="mini-btn edit js-edit"
+                data-type="note"
+                data-id="${n.id}"
+                type="button"
+              >
+                ✎
+              </button>
 
-                <button
-                  class="mini-btn edit js-edit"
-                  data-type="note"
-                  data-id="${n.id}"
-                  type="button"
-                  title="Editar"
-                >
-                  ✎
-                </button>
+              <button
+                class="mini-btn delete js-delete"
+                data-type="note"
+                data-id="${n.id}"
+                type="button"
+              >
+                ×
+              </button>
 
-                <button
-                  class="mini-btn delete js-delete"
-                  data-type="note"
-                  data-id="${n.id}"
-                  type="button"
-                  title="Eliminar"
-                >
-                  ×
-                </button>
+            </div>
 
-              </div>
+          </article>
 
-            </article>
+        `)
 
-          `
-
-          )
-
-          .join("")
+        .join("")
 
         :
 
         emptyState(
           "▤",
-          "Aún no tienes notas rápidas."
+          "Aún no tienes notas."
         );
 
 }
 
 
+
+/* =========================================================
+   METAS
+========================================================= */
 
 function renderGoals() {
 
@@ -4478,128 +5123,115 @@ function renderGoals() {
 
         ?
 
-        state.goals
+        state.goals.map(
 
-          .map(
+          g => `
 
-            g => `
+          <article class="goal-card">
 
-            <article
-              class="goal-card"
-              data-searchable="${esc(
-                `${g.title} ${g.details || ""}`
+            <div class="project-card-head">
+
+              <div>
+
+                <span class="section-kicker">
+                  META
+                </span>
+
+                <h3>
+                  ${esc(g.title)}
+                </h3>
+
+              </div>
+
+              <div class="mini-action-group">
+
+                <button
+                  class="mini-btn edit js-edit"
+                  data-type="goal"
+                  data-id="${g.id}"
+                  type="button"
+                >
+                  ✎
+                </button>
+
+                <button
+                  class="mini-btn delete js-delete"
+                  data-type="goal"
+                  data-id="${g.id}"
+                  type="button"
+                >
+                  ×
+                </button>
+
+              </div>
+
+            </div>
+
+            <p>
+              ${esc(g.details || "")}
+            </p>
+
+            <div class="project-progress-row">
+
+              <span>
+                Avance
+              </span>
+
+              <strong>
+                ${clamp(
+                  g.progress || 0,
+                  0,
+                  100
+                )}%
+              </strong>
+
+            </div>
+
+            <input
+              class="project-range js-goal-range"
+              data-id="${g.id}"
+              type="range"
+              min="0"
+              max="100"
+              value="${clamp(
+                g.progress || 0,
+                0,
+                100
               )}"
             >
 
-              <div class="project-card-head">
+            <div class="goal-meta">
 
-                <div>
+              <span>
+                Fecha objetivo
+              </span>
 
-                  <span class="section-kicker">
-                    META
-                  </span>
+              <strong>
+                ${formatDate(g.date)}
+              </strong>
 
-                  <h3>
-                    ${esc(g.title)}
-                  </h3>
+            </div>
 
-                </div>
+          </article>
 
-                <div class="mini-action-group">
+        `)
 
-                  <button
-                    class="mini-btn edit js-edit"
-                    data-type="goal"
-                    data-id="${g.id}"
-                    type="button"
-                    title="Editar"
-                  >
-                    ✎
-                  </button>
-
-                  <button
-                    class="mini-btn delete js-delete"
-                    data-type="goal"
-                    data-id="${g.id}"
-                    type="button"
-                    title="Eliminar"
-                  >
-                    ×
-                  </button>
-
-                </div>
-
-              </div>
-
-              <p>
-                ${esc(g.details || "")}
-              </p>
-
-              <div class="project-progress-row">
-
-                <span>
-                  Avance
-                </span>
-
-                <strong>
-
-                  ${clamp(
-                    g.progress
-                    ||
-                    0,
-                    0,
-                    100
-                  )}%
-
-                </strong>
-
-              </div>
-
-              <input
-                class="project-range js-goal-range"
-                data-id="${g.id}"
-                type="range"
-                min="0"
-                max="100"
-                value="${clamp(
-                  g.progress
-                  ||
-                  0,
-                  0,
-                  100
-                )}"
-              >
-
-              <div class="goal-meta">
-
-                <span>
-                  Fecha objetivo
-                </span>
-
-                <strong>
-                  ${formatDate(g.date)}
-                </strong>
-
-              </div>
-
-            </article>
-
-          `
-
-          )
-
-          .join("")
+        .join("")
 
         :
 
         emptyState(
           "◎",
-          "Crea una meta que quieras cumplir."
+          "Crea una meta."
         );
 
 }
 
 
+
+/* =========================================================
+   ESTADÍSTICAS
+========================================================= */
 
 function donutBlock(
   percent,
@@ -4658,12 +5290,10 @@ function renderStats() {
 
 
   const doneWork =
-    state.workTasks
-      .filter(
-        t =>
-          t.done
-      )
-      .length;
+    state.workTasks.filter(
+      t =>
+        t.done
+    ).length;
 
 
   const workPct =
@@ -4672,10 +5302,8 @@ function renderStats() {
       ?
 
       Math.round(
-        doneWork
-        /
-        totalWork
-        *
+        doneWork /
+        totalWork *
         100
       )
 
@@ -4689,12 +5317,10 @@ function renderStats() {
 
 
   const donePersonal =
-    state.personal
-      .filter(
-        t =>
-          t.done
-      )
-      .length;
+    state.personal.filter(
+      t =>
+        t.done
+    ).length;
 
 
   const personalPct =
@@ -4703,10 +5329,8 @@ function renderStats() {
       ?
 
       Math.round(
-        donePersonal
-        /
-        totalPersonal
-        *
+        donePersonal /
+        totalPersonal *
         100
       )
 
@@ -4716,7 +5340,6 @@ function renderStats() {
 
 
   const projectPct =
-
     state.projects.length
 
       ?
@@ -4724,24 +5347,12 @@ function renderStats() {
       Math.round(
 
         state.projects.reduce(
-
-          (
-            sum,
-            p
-          ) =>
-
-            sum
-            +
-            projectProgress(
-              p
-            ),
-
+          (sum, p) =>
+            sum +
+            projectProgress(p),
           0
-
         )
-
         /
-
         state.projects.length
 
       )
@@ -4753,19 +5364,13 @@ function renderStats() {
 
   const avg =
     Math.round(
-
       (
-        workPct
-        +
-        personalPct
-        +
+        workPct +
+        personalPct +
         projectPct
       )
-
       /
-
       3
-
     );
 
 
@@ -4800,45 +5405,39 @@ function renderStats() {
         `${state.projects.length} proyectos`
       )
 
-    ]
-    .join("");
+    ].join("");
 
 
   $("#workProgress")
     .innerHTML =
       donutBlock(
-
         workPct,
-
         `${doneWork} de ${totalWork} tareas completadas`
-
       );
 
 
   $("#personalProgress")
     .innerHTML =
       donutBlock(
-
         personalPct,
-
         `${donePersonal} de ${totalPersonal} actividades completadas`
-
       );
 
 
   $("#projectProgress")
     .innerHTML =
       donutBlock(
-
         projectPct,
-
         "promedio de avance de tus proyectos"
-
       );
 
 }
 
 
+
+/* =========================================================
+   CALENDARIO
+========================================================= */
 
 function calendarEvents() {
 
@@ -4847,108 +5446,82 @@ function calendarEvents() {
 
 
   state.workTasks
-
     .filter(
       t =>
-        !t.done
-        &&
+        !t.done &&
         t.date
     )
-
     .forEach(
 
       t =>
         list.push({
-
           date:
             t.date,
-
           title:
             t.title,
-
           type:
             "work"
-
         })
 
     );
 
 
   state.personal
-
     .filter(
       t =>
-        !t.done
-        &&
+        !t.done &&
         t.date
     )
-
     .forEach(
 
       t =>
         list.push({
-
           date:
             t.date,
-
           title:
             t.title,
-
           type:
             "personal"
-
         })
 
     );
 
 
   state.meetings
-
     .filter(
       t =>
         t.date
     )
-
     .forEach(
 
       t =>
         list.push({
-
           date:
             t.date,
-
           title:
             t.title,
-
           type:
             "meeting"
-
         })
 
     );
 
 
   state.trainings
-
     .filter(
       t =>
         t.date
     )
-
     .forEach(
 
       t =>
         list.push({
-
           date:
             t.date,
-
           title:
             t.title,
-
           type:
             "training"
-
         })
 
     );
@@ -4980,13 +5553,10 @@ function renderCalendar() {
           "es-CL",
 
           {
-
             month:
               "long",
-
             year:
               "numeric"
-
           }
 
         );
@@ -5002,9 +5572,7 @@ function renderCalendar() {
 
   const mondayIndex =
     (
-      first.getDay()
-      +
-      6
+      first.getDay() + 6
     )
     %
     7;
@@ -5033,22 +5601,16 @@ function renderCalendar() {
   ) {
 
     const d =
-      new Date(
-        start
-      );
+      new Date(start);
 
 
     d.setDate(
-      start.getDate()
-      +
-      i
+      start.getDate() + i
     );
 
 
     const iso =
-      toISO(
-        d
-      );
+      toISO(d);
 
 
     const outside =
@@ -5076,8 +5638,8 @@ function renderCalendar() {
       allEvents
 
         .filter(
-          e =>
-            e.date ===
+          event =>
+            event.date ===
             iso
         )
 
@@ -5088,13 +5650,14 @@ function renderCalendar() {
 
         .map(
 
-          e =>
-            `
+          event => `
+
             <span
-              class="event-dot dot-${e.type}"
-              title="${esc(e.title)}"
+              class="event-dot dot-${event.type}"
+              title="${esc(event.title)}"
             ></span>
-            `
+
+          `
 
         )
 
@@ -5163,6 +5726,10 @@ function renderCalendar() {
 
 
 
+/* =========================================================
+   RENDER GENERAL
+========================================================= */
+
 function renderAll() {
 
   if (
@@ -5207,352 +5774,229 @@ function renderAll() {
 
 
 
-/* =========================================
-   MODAL CREAR / EDITAR
-========================================= */
-
+/* =========================================================
+   CONFIGURACIÓN MODAL
+========================================================= */
 
 const modalConfigs = {
 
   work: {
-
     title:
       "Nueva tarea de trabajo",
-
     editTitle:
       "Editar tarea de trabajo",
-
     label:
       "Tarea",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       false,
-
     project:
       true,
-
     priority:
       true,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   personal: {
-
     title:
       "Nueva actividad personal",
-
     editTitle:
       "Editar actividad personal",
-
     label:
       "Actividad",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       true,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       true,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   project: {
-
     title:
       "Nuevo proyecto",
-
     editTitle:
       "Editar proyecto",
-
     label:
       "Nombre del proyecto",
-
     date:
       true,
-
     dateLabel:
       "Fecha objetivo",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       true,
-
     details:
       true
-
   },
-
 
   projectTask: {
-
     title:
       "Nueva subtarea",
-
     editTitle:
       "Editar subtarea",
-
     label:
-      "Subtarea del proyecto",
-
+      "Subtarea",
     date:
       false,
-
-    dateLabel:
-      "Fecha",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   meeting: {
-
     title:
       "Nueva reunión",
-
     editTitle:
       "Editar reunión",
-
     label:
       "Nombre de la reunión",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       true,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   training: {
-
     title:
       "Nueva capacitación",
-
     editTitle:
       "Editar capacitación",
-
     label:
       "Nombre de la capacitación",
-
     date:
       true,
-
     dateLabel:
       "Fecha",
-
     time:
       true,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   idea: {
-
     title:
       "Nueva idea",
-
     editTitle:
       "Editar idea",
-
     label:
       "Idea",
-
     date:
       false,
-
-    dateLabel:
-      "Fecha",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
-
 
   note: {
-
     title:
       "Nueva nota",
-
     editTitle:
       "Editar nota",
-
     label:
       "Título",
-
     date:
       false,
-
-    dateLabel:
-      "Fecha",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       false,
-
     details:
       true
-
   },
 
-
   goal: {
-
     title:
       "Nueva meta",
-
     editTitle:
       "Editar meta",
-
     label:
       "Meta",
-
     date:
       true,
-
     dateLabel:
       "Fecha objetivo",
-
     time:
       false,
-
     project:
       false,
-
     priority:
       false,
-
     category:
       false,
-
     progress:
       true,
-
     details:
       true
-
   }
 
 };
@@ -5564,15 +6008,18 @@ function toggleField(
   visible
 ) {
 
-  $(selector)
-    .classList
-    .toggle(
+  const element =
+    $(selector);
 
-      "hidden-field",
 
-      !visible
+  if (!element)
+    return;
 
-    );
+
+  element.classList.toggle(
+    "hidden-field",
+    !visible
+  );
 
 }
 
@@ -5600,6 +6047,29 @@ function resetModalFields() {
         new Date()
       );
 
+
+  personalPhotoDraft =
+    null;
+
+
+  personalPhotoRemoved =
+    false;
+
+
+  const status =
+    $("#personalPhotoStatus");
+
+
+  if (status) {
+
+    status.textContent =
+      "";
+
+  }
+
+
+  renderPersonalPhotoPreview();
+
 }
 
 
@@ -5625,7 +6095,6 @@ function configureModal(
 
   $("#modalTitle")
     .textContent =
-
       item
 
         ?
@@ -5642,16 +6111,26 @@ function configureModal(
       cfg.label;
 
 
-  $("#dateFieldLabel")
-    .textContent =
-      cfg.dateLabel
-      ||
-      "Fecha";
+  if (
+    $("#dateFieldLabel")
+  ) {
+
+    $("#dateFieldLabel")
+      .textContent =
+        cfg.dateLabel
+        ||
+        "Fecha";
+
+  }
 
 
-  $("#saveItemBtn")
-    .textContent =
+  const saveButton =
+    saveItemButton();
 
+
+  if (saveButton) {
+
+    saveButton.textContent =
       item
 
         ?
@@ -5661,6 +6140,8 @@ function configureModal(
         :
 
         "Guardar";
+
+  }
 
 
   toggleField(
@@ -5703,6 +6184,33 @@ function configureModal(
     "#detailsFieldWrap",
     cfg.details
   );
+
+
+  toggleField(
+    "#personalPhotoFieldWrap",
+    type ===
+    "personal"
+  );
+
+
+  if (
+    type ===
+    "personal"
+  ) {
+
+    personalPhotoDraft =
+      item?.photoData
+      ||
+      null;
+
+
+    personalPhotoRemoved =
+      false;
+
+
+    renderPersonalPhotoPreview();
+
+  }
 
 
   if (item) {
@@ -5804,15 +6312,8 @@ function openModal(type) {
     null;
 
 
-  if (
-    type !==
-    "projectTask"
-  ) {
-
-    currentProjectForTask =
-      null;
-
-  }
+  currentProjectForTask =
+    null;
 
 
   configureModal(
@@ -5827,17 +6328,6 @@ function openModal(type) {
 
   document.body.style.overflow =
     "hidden";
-
-
-  setTimeout(
-
-    () =>
-      $("#itemTitle")
-        .focus(),
-
-    0
-
-  );
 
 }
 
@@ -5866,17 +6356,6 @@ function openProjectTaskModal(projectId) {
   document.body.style.overflow =
     "hidden";
 
-
-  setTimeout(
-
-    () =>
-      $("#itemTitle")
-        .focus(),
-
-    0
-
-  );
-
 }
 
 
@@ -5896,11 +6375,9 @@ function openEditModal(
 
   const item =
     state[key].find(
-
       entry =>
         entry.id ===
         id
-
     );
 
 
@@ -5909,13 +6386,9 @@ function openEditModal(
 
 
   editContext = {
-
     type,
-
     id,
-
     key
-
   };
 
 
@@ -5947,17 +6420,6 @@ function openEditModal(
   document.body.style.overflow =
     "hidden";
 
-
-  setTimeout(
-
-    () =>
-      $("#itemTitle")
-        .focus(),
-
-    0
-
-  );
-
 }
 
 
@@ -5980,9 +6442,21 @@ function closeModal() {
   currentProjectForTask =
     null;
 
+
+  personalPhotoDraft =
+    null;
+
+
+  personalPhotoRemoved =
+    false;
+
 }
 
 
+
+/* =========================================================
+   DATOS DEL FORMULARIO
+========================================================= */
 
 function formPayload(type) {
 
@@ -6064,6 +6538,11 @@ function formPayload(type) {
         category:
           $("#itemCategory")
             .value,
+
+        photoData:
+          personalPhotoDraft
+          ||
+          "",
 
         ...(
           editContext
@@ -6205,6 +6684,10 @@ function formPayload(type) {
 
 
 
+/* =========================================================
+   GUARDAR / EDITAR
+========================================================= */
+
 async function handleFormSubmit(event) {
 
   event.preventDefault();
@@ -6233,14 +6716,10 @@ async function handleFormSubmit(event) {
 
 
   if (
-
     type ===
     "projectTask"
-
     &&
-
     !currentProjectForTask
-
   ) {
 
     showToast(
@@ -6254,24 +6733,27 @@ async function handleFormSubmit(event) {
 
 
   const button =
-    $("#saveItemBtn");
+    saveItemButton();
 
 
-  button.disabled =
-    true;
+  if (button) {
+
+    button.disabled =
+      true;
 
 
-  button.textContent =
+    button.textContent =
+      editContext
 
-    editContext
+        ?
 
-      ?
+        "Actualizando..."
 
-      "Actualizando..."
+        :
 
-      :
+        "Guardando...";
 
-      "Guardando...";
+  }
 
 
   try {
@@ -6335,36 +6817,42 @@ async function handleFormSubmit(event) {
 
 
     showToast(
-
       error.code ===
       "permission-denied"
 
         ?
 
-        "Firestore bloqueó el guardado. Revisa las reglas."
+        "Firestore bloqueó el guardado."
 
         :
 
-        "No se pudo guardar. Intenta nuevamente."
-
+        "No se pudo guardar."
     );
 
   }
 
   finally {
 
-    button.disabled =
-      false;
+    if (button) {
+
+      button.disabled =
+        false;
 
 
-    button.textContent =
-      "Guardar";
+      button.textContent =
+        "Guardar";
+
+    }
 
   }
 
 }
 
 
+
+/* =========================================================
+   ELIMINAR / CHECK
+========================================================= */
 
 async function deleteItem(
   type,
@@ -6399,11 +6887,9 @@ async function deleteItem(
 
       const children =
         state.projectTasks.filter(
-
           task =>
             task.projectId ===
             id
-
         );
 
 
@@ -6414,11 +6900,8 @@ async function deleteItem(
       ) {
 
         await removeItem(
-
           "projectTasks",
-
           child.id
-
         );
 
       }
@@ -6462,7 +6945,6 @@ async function toggleDone(
 ) {
 
   const key =
-
     type ===
     "work"
 
@@ -6475,34 +6957,13 @@ async function toggleDone(
       "personal";
 
 
-  try {
-
-    await updateItem(
-
-      key,
-
-      id,
-
-      {
-        done
-      }
-
-    );
-
-  }
-
-  catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    showToast(
-      "No se pudo actualizar."
-    );
-
-  }
+  await updateItem(
+    key,
+    id,
+    {
+      done
+    }
+  );
 
 }
 
@@ -6513,43 +6974,25 @@ async function toggleProjectTask(
   done
 ) {
 
-  try {
+  await updateItem(
 
-    await updateItem(
+    "projectTasks",
 
-      "projectTasks",
+    id,
 
-      id,
+    {
+      done
+    }
 
-      {
-        done
-      }
-
-    );
-
-  }
-
-  catch (error) {
-
-    console.error(
-      error
-    );
-
-
-    showToast(
-      "No se pudo actualizar la subtarea."
-    );
-
-  }
+  );
 
 }
 
 
 
-/* =========================================
+/* =========================================================
    BUSCADOR
-========================================= */
-
+========================================================= */
 
 function applySearch() {
 
@@ -6588,11 +7031,9 @@ function applySearch() {
         "search-hidden",
 
         Boolean(
-
           q
           &&
           !text.includes(q)
-
         )
 
       );
@@ -6605,12 +7046,16 @@ function applySearch() {
 
 
 
-/* =========================================
+/* =========================================================
    EVENTOS
-========================================= */
-
+========================================================= */
 
 function bindEvents() {
+
+  ensurePersonalPhotoUI();
+
+  ensurePhotoViewer();
+
 
   $("#loginForm")
     .addEventListener(
@@ -6659,15 +7104,12 @@ function bindEvents() {
 
       "click",
 
-      () => {
-
+      () =>
         $("#sidebar")
           .classList
           .toggle(
             "open"
-          );
-
-      }
+          )
 
     );
 
@@ -6731,13 +7173,9 @@ function bindEvents() {
         calendarCursor =
           new Date(
 
-            calendarCursor
-              .getFullYear(),
+            calendarCursor.getFullYear(),
 
-            calendarCursor
-              .getMonth()
-              -
-              1,
+            calendarCursor.getMonth() - 1,
 
             1
 
@@ -6761,13 +7199,9 @@ function bindEvents() {
         calendarCursor =
           new Date(
 
-            calendarCursor
-              .getFullYear(),
+            calendarCursor.getFullYear(),
 
-            calendarCursor
-              .getMonth()
-              +
-              1,
+            calendarCursor.getMonth() + 1,
 
             1
 
@@ -6786,6 +7220,24 @@ function bindEvents() {
     "click",
 
     event => {
+
+      const photoBtn =
+        event.target.closest(
+          ".js-open-photo"
+        );
+
+
+      if (photoBtn) {
+
+        openPhotoViewerByPersonalId(
+          photoBtn.dataset.id
+        );
+
+
+        return;
+
+      }
+
 
       const addBtn =
         event.target.closest(
@@ -6902,8 +7354,7 @@ function bindEvents() {
         )
         .forEach(
 
-          btn => {
-
+          btn =>
             btn.classList.toggle(
 
               "active",
@@ -6911,17 +7362,12 @@ function bindEvents() {
               btn ===
               filterBtn
 
-            );
-
-          }
+            )
 
         );
 
 
         renderWorkTasks();
-
-
-        applySearch();
 
       }
 
@@ -6997,41 +7443,22 @@ function bindEvents() {
         )
       ) {
 
-        try {
+        await updateItem(
 
-          await updateItem(
+          "projects",
 
-            "projects",
+          event.target.dataset.id,
 
-            event.target.dataset.id,
+          {
+            progress:
+              clamp(
+                event.target.value,
+                0,
+                100
+              )
+          }
 
-            {
-
-              progress:
-                clamp(
-                  event.target.value,
-                  0,
-                  100
-                )
-
-            }
-
-          );
-
-        }
-
-        catch (error) {
-
-          console.error(
-            error
-          );
-
-
-          showToast(
-            "No se pudo actualizar el proyecto."
-          );
-
-        }
+        );
 
       }
 
@@ -7042,41 +7469,22 @@ function bindEvents() {
         )
       ) {
 
-        try {
+        await updateItem(
 
-          await updateItem(
+          "goals",
 
-            "goals",
+          event.target.dataset.id,
 
-            event.target.dataset.id,
+          {
+            progress:
+              clamp(
+                event.target.value,
+                0,
+                100
+              )
+          }
 
-            {
-
-              progress:
-                clamp(
-                  event.target.value,
-                  0,
-                  100
-                )
-
-            }
-
-          );
-
-        }
-
-        catch (error) {
-
-          console.error(
-            error
-          );
-
-
-          showToast(
-            "No se pudo actualizar la meta."
-          );
-
-        }
+        );
 
       }
 
@@ -7102,8 +7510,20 @@ function bindEvents() {
 
 
       if (
-        !$("#modalBackdrop")
-          .hidden
+        $("#photoViewer")
+        &&
+        !$("#photoViewer").hidden
+      ) {
+
+        closePhotoViewer();
+
+        return;
+
+      }
+
+
+      if (
+        !$("#modalBackdrop").hidden
       ) {
 
         closeModal();
@@ -7112,14 +7532,9 @@ function bindEvents() {
 
 
       if (
-
         $("#backupBackdrop")
-
         &&
-
-        !$("#backupBackdrop")
-          .hidden
-
+        !$("#backupBackdrop").hidden
       ) {
 
         closeBackupModal();
@@ -7133,6 +7548,10 @@ function bindEvents() {
 }
 
 
+
+/* =========================================================
+   INICIO
+========================================================= */
 
 bindEvents();
 
