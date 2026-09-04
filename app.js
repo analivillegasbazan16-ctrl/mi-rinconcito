@@ -52,6 +52,7 @@ const COLLECTION_KEYS = [
   "workTasks",
   "personal",
   "projects",
+  "projectTasks",
   "meetings",
   "trainings",
   "ideas",
@@ -79,6 +80,10 @@ let currentView = "inicio";
 let taskFilter = "all";
 
 let calendarCursor = new Date();
+
+let editContext = null;
+
+let currentProjectForTask = null;
 
 
 
@@ -131,6 +136,9 @@ const typeToCollection = {
 
   project:
     "projects",
+
+  projectTask:
+    "projectTasks",
 
   meeting:
     "meetings",
@@ -321,12 +329,14 @@ function formatDate(
   return d
 
     ?
+
     d.toLocaleDateString(
       "es-CL",
       options
     )
 
     :
+
     "Sin fecha";
 
 }
@@ -344,6 +354,7 @@ function shortMonth(dateStr) {
   return d
 
     ?
+
     d.toLocaleDateString(
       "es-CL",
       {
@@ -357,6 +368,7 @@ function shortMonth(dateStr) {
     )
 
     :
+
     "";
 
 }
@@ -490,6 +502,10 @@ function showToast(message) {
     $("#toast");
 
 
+  if (!toast)
+    return;
+
+
   toast.textContent =
     message;
 
@@ -512,7 +528,7 @@ function showToast(message) {
           "show"
         ),
 
-      2300
+      2600
 
     );
 
@@ -608,6 +624,38 @@ function userCollection(key) {
     currentUser.uid,
 
     key
+
+  );
+
+}
+
+
+
+function userDoc(
+  key,
+  id
+) {
+
+  if (!currentUser) {
+
+    throw new Error(
+      "No hay usuario autenticado."
+    );
+
+  }
+
+
+  return doc(
+
+    db,
+
+    "users",
+
+    currentUser.uid,
+
+    key,
+
+    id
 
   );
 
@@ -718,6 +766,9 @@ async function createItem(
       ...data,
 
       createdAt:
+        serverTimestamp(),
+
+      updatedAt:
         serverTimestamp()
 
     }
@@ -735,7 +786,8 @@ async function updateItem(
 ) {
 
   if (
-    !currentUser ||
+    !currentUser
+    ||
     !id
   ) {
 
@@ -746,21 +798,19 @@ async function updateItem(
 
   await updateDoc(
 
-    doc(
-
-      db,
-
-      "users",
-
-      currentUser.uid,
-
+    userDoc(
       collectionKey,
-
       id
-
     ),
 
-    data
+    {
+
+      ...data,
+
+      updatedAt:
+        serverTimestamp()
+
+    }
 
   );
 
@@ -774,7 +824,8 @@ async function removeItem(
 ) {
 
   if (
-    !currentUser ||
+    !currentUser
+    ||
     !id
   ) {
 
@@ -785,18 +836,9 @@ async function removeItem(
 
   await deleteDoc(
 
-    doc(
-
-      db,
-
-      "users",
-
-      currentUser.uid,
-
+    userDoc(
       collectionKey,
-
       id
-
     )
 
   );
@@ -805,9 +847,13 @@ async function removeItem(
 
 
 
+/* =========================================
+   MIGRAR DATOS ANTIGUOS
+========================================= */
+
+
 const LEGACY_STORAGE_KEY =
   "mi_rinconcito_v1";
-
 
 
 async function migrateLegacyLocalData() {
@@ -885,7 +931,9 @@ async function migrateLegacyLocalData() {
 
 
     const legacy =
-      JSON.parse(raw);
+      JSON.parse(
+        raw
+      );
 
 
     let imported =
@@ -948,18 +996,9 @@ async function migrateLegacyLocalData() {
         if (oldId) {
 
           const targetRef =
-            doc(
-
-              db,
-
-              "users",
-
-              currentUser.uid,
-
+            userDoc(
               key,
-
               oldId
-
             );
 
 
@@ -982,6 +1021,9 @@ async function migrateLegacyLocalData() {
                 ...clean,
 
                 migratedAt:
+                  serverTimestamp(),
+
+                updatedAt:
                   serverTimestamp()
 
               }
@@ -997,21 +1039,9 @@ async function migrateLegacyLocalData() {
 
         else {
 
-          await addDoc(
-
-            userCollection(
-              key
-            ),
-
-            {
-
-              ...clean,
-
-              migratedAt:
-                serverTimestamp()
-
-            }
-
+          await createItem(
+            key,
+            clean
           );
 
 
@@ -1084,6 +1114,878 @@ async function migrateLegacyLocalData() {
 
 
 
+/* =========================================
+   RESPALDO PRIVADO
+========================================= */
+
+
+function sanitizeForBackup(item) {
+
+  const clean =
+    {
+      ...item
+    };
+
+
+  delete clean.createdAt;
+
+  delete clean.updatedAt;
+
+  delete clean.migratedAt;
+
+
+  return clean;
+
+}
+
+
+
+function buildBackupObject() {
+
+  const data =
+    {};
+
+
+  COLLECTION_KEYS.forEach(
+
+    key => {
+
+      data[key] =
+        state[key].map(
+          sanitizeForBackup
+        );
+
+    }
+
+  );
+
+
+  return {
+
+    app:
+      "Mi Rinconcito",
+
+    version:
+      2,
+
+    exportedAt:
+      new Date()
+        .toISOString(),
+
+    data
+
+  };
+
+}
+
+
+
+function ensureBackupUI() {
+
+  if (
+    $("#backupBtn")
+  ) {
+
+    return;
+
+  }
+
+
+  const style =
+    document.createElement(
+      "style"
+    );
+
+
+  style.textContent = `
+
+    .backup-modal-card {
+      width: min(760px, 100%);
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+      background: #fff;
+      border-radius: 26px;
+      padding: 24px;
+      box-shadow: 0 25px 80px rgba(74,46,57,.25);
+    }
+
+    .backup-textarea {
+      width: 100%;
+      min-height: 230px;
+      border: 1px solid var(--line,#f1dfe5);
+      border-radius: 16px;
+      padding: 14px;
+      resize: vertical;
+      background: #fffdfd;
+      color: var(--text,#433740);
+      font: 13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;
+    }
+
+    .backup-help {
+      font-size: 12px;
+      color: var(--muted,#7d6e76);
+      line-height: 1.55;
+      margin: 8px 0 14px;
+    }
+
+    .backup-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+
+    .project-task-zone {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #f3e4e9;
+    }
+
+    .project-task-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .project-task-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #6d5a63;
+    }
+
+    .project-task-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .project-task-row {
+      display: grid;
+      grid-template-columns: auto minmax(0,1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px;
+      border-radius: 12px;
+      background: #fff8fa;
+    }
+
+    .project-task-row.done .project-task-name {
+      text-decoration: line-through;
+      color: #aa98a0;
+    }
+
+    .project-task-name {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .project-task-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .project-mode-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--muted,#7d6e76);
+    }
+
+    .mode-btn {
+      border: 1px solid var(--line,#f1dfe5);
+      background: #fff;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--rose-700,#b84a68);
+    }
+
+    .mini-action-group {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .mini-btn.edit {
+      color: var(--rose-700,#b84a68);
+    }
+
+    .backup-button {
+      white-space: nowrap;
+    }
+
+    @media(max-width:560px) {
+
+      .backup-button {
+        display: none;
+      }
+
+      .project-task-row {
+        grid-template-columns: auto minmax(0,1fr);
+      }
+
+      .project-task-actions {
+        grid-column: 2;
+        justify-content: flex-end;
+      }
+
+    }
+
+  `;
+
+
+  document.head
+    .appendChild(
+      style
+    );
+
+
+  const backupBtn =
+    document.createElement(
+      "button"
+    );
+
+
+  backupBtn.id =
+    "backupBtn";
+
+
+  backupBtn.type =
+    "button";
+
+
+  backupBtn.className =
+    "secondary-btn backup-button";
+
+
+  backupBtn.textContent =
+    "Respaldo";
+
+
+  const logoutBtn =
+    $("#logoutBtn");
+
+
+  logoutBtn
+    ?.parentElement
+    ?.insertBefore(
+      backupBtn,
+      logoutBtn
+    );
+
+
+  const backdrop =
+    document.createElement(
+      "div"
+    );
+
+
+  backdrop.id =
+    "backupBackdrop";
+
+
+  backdrop.className =
+    "modal-backdrop";
+
+
+  backdrop.hidden =
+    true;
+
+
+  backdrop.innerHTML = `
+
+    <div
+      class="backup-modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="backupTitle"
+    >
+
+      <div class="modal-head">
+
+        <div>
+
+          <span class="section-kicker">
+            RESPALDO PRIVADO
+          </span>
+
+          <h2 id="backupTitle">
+            Importar o exportar
+          </h2>
+
+        </div>
+
+        <button
+          class="icon-btn"
+          id="closeBackupBtn"
+          type="button"
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+
+      </div>
+
+      <p class="backup-help">
+        Puedes pegar aquí un respaldo para cargarlo en tu Firebase privado.
+        También puedes generar una copia de todo lo que ya tienes guardado.
+      </p>
+
+      <textarea
+        id="backupTextarea"
+        class="backup-textarea"
+        spellcheck="false"
+        placeholder="Pega aquí el JSON del respaldo..."
+      ></textarea>
+
+      <p
+        id="backupMessage"
+        class="backup-help"
+        aria-live="polite"
+      ></p>
+
+      <div class="backup-actions">
+
+        <button
+          id="exportBackupBtn"
+          type="button"
+          class="secondary-btn"
+        >
+          Generar respaldo
+        </button>
+
+        <button
+          id="downloadBackupBtn"
+          type="button"
+          class="secondary-btn"
+        >
+          Descargar JSON
+        </button>
+
+        <button
+          id="importBackupBtn"
+          type="button"
+          class="primary-btn"
+        >
+          Importar a Firebase
+        </button>
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  document.body
+    .appendChild(
+      backdrop
+    );
+
+
+  backupBtn
+    .addEventListener(
+      "click",
+      openBackupModal
+    );
+
+
+  $("#closeBackupBtn")
+    ?.addEventListener(
+      "click",
+      closeBackupModal
+    );
+
+
+  backdrop
+    .addEventListener(
+
+      "click",
+
+      event => {
+
+        if (
+          event.target ===
+          backdrop
+        ) {
+
+          closeBackupModal();
+
+        }
+
+      }
+
+    );
+
+
+  $("#exportBackupBtn")
+    ?.addEventListener(
+
+      "click",
+
+      () => {
+
+        $("#backupTextarea")
+          .value =
+            JSON.stringify(
+              buildBackupObject(),
+              null,
+              2
+            );
+
+
+        $("#backupMessage")
+          .textContent =
+            "Respaldo generado. Puedes copiarlo o descargarlo.";
+
+      }
+
+    );
+
+
+  $("#downloadBackupBtn")
+    ?.addEventListener(
+      "click",
+      downloadBackup
+    );
+
+
+  $("#importBackupBtn")
+    ?.addEventListener(
+      "click",
+      importBackupFromTextarea
+    );
+
+}
+
+
+
+function openBackupModal() {
+
+  const backdrop =
+    $("#backupBackdrop");
+
+
+  if (!backdrop)
+    return;
+
+
+  $("#backupMessage")
+    .textContent =
+      "";
+
+
+  backdrop.hidden =
+    false;
+
+
+  document.body.style.overflow =
+    "hidden";
+
+
+  setTimeout(
+
+    () =>
+      $("#backupTextarea")
+        ?.focus(),
+
+    0
+
+  );
+
+}
+
+
+
+function closeBackupModal() {
+
+  const backdrop =
+    $("#backupBackdrop");
+
+
+  if (!backdrop)
+    return;
+
+
+  backdrop.hidden =
+    true;
+
+
+  document.body.style.overflow =
+    "";
+
+}
+
+
+
+function downloadBackup() {
+
+  const backup =
+    JSON.stringify(
+      buildBackupObject(),
+      null,
+      2
+    );
+
+
+  const blob =
+    new Blob(
+
+      [
+        backup
+      ],
+
+      {
+        type:
+          "application/json"
+      }
+
+    );
+
+
+  const url =
+    URL.createObjectURL(
+      blob
+    );
+
+
+  const a =
+    document.createElement(
+      "a"
+    );
+
+
+  a.href =
+    url;
+
+
+  a.download =
+    `mi-rinconcito-respaldo-${toISO(
+      new Date()
+    )}.json`;
+
+
+  document.body
+    .appendChild(
+      a
+    );
+
+
+  a.click();
+
+
+  a.remove();
+
+
+  URL.revokeObjectURL(
+    url
+  );
+
+
+  $("#backupMessage")
+    .textContent =
+      "Respaldo descargado.";
+
+}
+
+
+
+function normalizeBackup(raw) {
+
+  if (
+    !raw
+    ||
+    typeof raw !==
+    "object"
+  ) {
+
+    throw new Error(
+      "El respaldo no tiene un formato válido."
+    );
+
+  }
+
+
+  const data =
+    raw.data
+    &&
+    typeof raw.data ===
+    "object"
+
+      ?
+
+      raw.data
+
+      :
+
+      raw;
+
+
+  const normalized =
+    {};
+
+
+  COLLECTION_KEYS.forEach(
+
+    key => {
+
+      normalized[key] =
+        Array.isArray(
+          data[key]
+        )
+
+          ?
+
+          data[key]
+
+          :
+
+          [];
+
+    }
+
+  );
+
+
+  return normalized;
+
+}
+
+
+
+async function importBackupFromTextarea() {
+
+  if (!currentUser)
+    return;
+
+
+  const textarea =
+    $("#backupTextarea");
+
+
+  const message =
+    $("#backupMessage");
+
+
+  const button =
+    $("#importBackupBtn");
+
+
+  const text =
+    textarea.value
+      .trim();
+
+
+  if (!text) {
+
+    message.textContent =
+      "Pega primero el respaldo que quieres importar.";
+
+
+    return;
+
+  }
+
+
+  let parsed;
+
+
+  try {
+
+    parsed =
+      JSON.parse(
+        text
+      );
+
+  }
+
+  catch (_) {
+
+    message.textContent =
+      "El texto no es un JSON válido.";
+
+
+    return;
+
+  }
+
+
+  const normalized =
+    normalizeBackup(
+      parsed
+    );
+
+
+  button.disabled =
+    true;
+
+
+  button.textContent =
+    "Importando...";
+
+
+  message.textContent =
+    "Cargando datos en tu Firebase privado...";
+
+
+  try {
+
+    let count =
+      0;
+
+
+    for (
+      const key
+      of
+      COLLECTION_KEYS
+    ) {
+
+      for (
+        const item
+        of
+        normalized[key]
+      ) {
+
+        if (
+          !item
+          ||
+          typeof item !==
+          "object"
+        ) {
+
+          continue;
+
+        }
+
+
+        const clean =
+          {
+            ...item
+          };
+
+
+        const id =
+          clean.id
+
+            ?
+
+            String(
+              clean.id
+            )
+            .replaceAll(
+              "/",
+              "_"
+            )
+
+            :
+
+            `${key}_${Date.now()}_${Math.random()
+              .toString(36)
+              .slice(2,8)}`;
+
+
+        delete clean.id;
+
+        delete clean.createdAt;
+
+        delete clean.updatedAt;
+
+        delete clean.migratedAt;
+
+
+        await setDoc(
+
+          userDoc(
+            key,
+            id
+          ),
+
+          {
+
+            ...clean,
+
+            importedAt:
+              serverTimestamp(),
+
+            updatedAt:
+              serverTimestamp()
+
+          },
+
+          {
+            merge:
+              true
+          }
+
+        );
+
+
+        count++;
+
+      }
+
+    }
+
+
+    message.textContent =
+      `Listo: ${count} registros cargados o actualizados.`;
+
+
+    showToast(
+      `Importación lista: ${count} registros ♡`
+    );
+
+  }
+
+  catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    message.textContent =
+
+      error.code ===
+      "permission-denied"
+
+        ?
+
+        "Firestore bloqueó la importación. Revisa las reglas."
+
+        :
+
+        "No se pudo terminar la importación.";
+
+  }
+
+  finally {
+
+    button.disabled =
+      false;
+
+
+    button.textContent =
+      "Importar a Firebase";
+
+  }
+
+}
+
+
+
+/* =========================================
+   AUTENTICACIÓN
+========================================= */
+
+
 onAuthStateChanged(
 
   auth,
@@ -1116,6 +2018,9 @@ onAuthStateChanged(
           user.email
           ||
           "Usuario";
+
+
+      ensureBackupUI();
 
 
       const migration =
@@ -1271,6 +2176,10 @@ async function handleLogin(event) {
     "";
 
 
+  message.style.color =
+    "";
+
+
   button.disabled =
     true;
 
@@ -1300,7 +2209,9 @@ async function handleLogin(event) {
 
   catch (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
     message.textContent =
@@ -1374,7 +2285,9 @@ async function handleResetPassword() {
 
   catch (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
     message.style.color =
@@ -1394,7 +2307,9 @@ async function handleLogout() {
 
   try {
 
-    await signOut(auth);
+    await signOut(
+      auth
+    );
 
 
     showToast(
@@ -1405,7 +2320,9 @@ async function handleLogout() {
 
   catch (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
     showToast(
@@ -1416,6 +2333,11 @@ async function handleLogout() {
 
 }
 
+
+
+/* =========================================
+   NAVEGACIÓN
+========================================= */
 
 
 function switchView(view) {
@@ -1460,16 +2382,19 @@ function switchView(view) {
   $$(".nav-item")
     .forEach(
 
-      btn =>
+      btn => {
+
         btn.classList.toggle(
 
           "active",
 
           btn.dataset.view
-            ===
+          ===
           view
 
-        )
+        );
+
+      }
 
     );
 
@@ -1497,6 +2422,219 @@ function switchView(view) {
 
 }
 
+
+
+/* =========================================
+   PROYECTOS + SUBTAREAS
+========================================= */
+
+
+function tasksForProject(projectId) {
+
+  return state.projectTasks
+
+    .filter(
+
+      task =>
+        task.projectId ===
+        projectId
+
+    )
+
+    .sort(
+
+      (a,b) => {
+
+        const doneDiff =
+
+          Number(
+            Boolean(
+              a.done
+            )
+          )
+
+          -
+
+          Number(
+            Boolean(
+              b.done
+            )
+          );
+
+
+        if (doneDiff) {
+
+          return doneDiff;
+
+        }
+
+
+        return (
+          a.title
+          ||
+          ""
+        )
+        .localeCompare(
+          b.title
+          ||
+          ""
+        );
+
+      }
+
+    );
+
+}
+
+
+
+function projectProgress(project) {
+
+  const mode =
+    project.progressMode
+    ||
+    "manual";
+
+
+  if (
+    mode !==
+    "auto"
+  ) {
+
+    return clamp(
+      project.progress,
+      0,
+      100
+    );
+
+  }
+
+
+  const tasks =
+    tasksForProject(
+      project.id
+    );
+
+
+  if (
+    !tasks.length
+  ) {
+
+    return 0;
+
+  }
+
+
+  const done =
+    tasks.filter(
+      task =>
+        task.done
+    )
+    .length;
+
+
+  return Math.round(
+
+    done
+    /
+    tasks.length
+    *
+    100
+
+  );
+
+}
+
+
+
+async function toggleProjectProgressMode(projectId) {
+
+  const project =
+    state.projects.find(
+
+      item =>
+        item.id ===
+        projectId
+
+    );
+
+
+  if (!project)
+    return;
+
+
+  const nextMode =
+
+    (
+      project.progressMode
+      ||
+      "manual"
+    )
+    ===
+    "auto"
+
+      ?
+
+      "manual"
+
+      :
+
+      "auto";
+
+
+  try {
+
+    await updateItem(
+
+      "projects",
+
+      projectId,
+
+      {
+        progressMode:
+          nextMode
+      }
+
+    );
+
+
+    showToast(
+
+      nextMode ===
+      "auto"
+
+        ?
+
+        "Avance automático activado"
+
+        :
+
+        "Avance manual activado"
+
+    );
+
+  }
+
+  catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    showToast(
+      "No se pudo cambiar el modo de avance."
+    );
+
+  }
+
+}
+
+
+
+/* =========================================
+   RENDERIZADO
+========================================= */
 
 
 function statCard(
@@ -1549,7 +2687,7 @@ function compactTask(task) {
     <label
       class="compact-item ${task.done ? "done" : ""}"
       data-searchable="${esc(
-        `${task.title} ${task.project} ${task.priority}`
+        `${task.title} ${task.project || ""} ${task.priority || ""}`
       )}"
     >
 
@@ -1607,7 +2745,7 @@ function compactPersonal(item) {
     <label
       class="compact-item ${item.done ? "done" : ""}"
       data-searchable="${esc(
-        `${item.title} ${item.category}`
+        `${item.title} ${item.category || ""}`
       )}"
     >
 
@@ -1640,9 +2778,13 @@ function compactPersonal(item) {
 
           ${
             item.time
+
               ?
+
               ` · ${esc(item.time)}`
+
               :
+
               ""
           }
 
@@ -1665,12 +2807,14 @@ function upcomingEvents() {
 
 
   state.workTasks
+
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
+
     .forEach(
 
       t =>
@@ -1690,12 +2834,14 @@ function upcomingEvents() {
 
 
   state.personal
+
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
+
     .forEach(
 
       t =>
@@ -1715,10 +2861,12 @@ function upcomingEvents() {
 
 
   state.meetings
+
     .filter(
       t =>
         t.date
     )
+
     .forEach(
 
       t =>
@@ -1738,10 +2886,12 @@ function upcomingEvents() {
 
 
   state.trainings
+
     .filter(
       t =>
         t.date
     )
+
     .forEach(
 
       t =>
@@ -1775,7 +2925,7 @@ function upcomingEvents() {
 
     .sort(
 
-      (a, b) =>
+      (a,b) =>
 
         (
           a.date
@@ -1809,23 +2959,27 @@ function upcomingEvents() {
 
 function timelineEvent(item) {
 
-  const typeClass = {
+  const typeClass =
 
-    work:
-      "type-work",
+    {
 
-    personal:
-      "type-personal",
+      work:
+        "type-work",
 
-    meeting:
-      "type-meeting",
+      personal:
+        "type-personal",
 
-    training:
-      "type-training"
+      meeting:
+        "type-meeting",
 
-  }[item.type]
-  ||
-  "type-work";
+      training:
+        "type-training"
+
+    }[item.type]
+
+    ||
+
+    "type-work";
 
 
   return `
@@ -1867,13 +3021,19 @@ function timelineEvent(item) {
 
           ${
             item.time
+
               ?
+
               `${esc(item.time)} · `
+
               :
+
               ""
           }
 
-          ${esc(item.typeLabel)}
+          ${esc(
+            item.typeLabel
+          )}
 
         </div>
 
@@ -1967,7 +3127,7 @@ function renderHome() {
 
       .sort(
 
-        (a, b) =>
+        (a,b) =>
 
           priorityWeight(
             a.priority
@@ -2070,9 +3230,13 @@ function renderHome() {
 
             ${
               next.time
+
                 ?
+
                 ` · ${esc(next.time)}`
+
                 :
+
                 ""
             }
 
@@ -2101,21 +3265,13 @@ function renderHome() {
 
           .sort(
 
-            (a, b) =>
+            (a,b) =>
 
-              Number(
-                b.progress
-                ||
-                0
-              )
+              projectProgress(b)
 
               -
 
-              Number(
-                a.progress
-                ||
-                0
-              )
+              projectProgress(a)
 
           )
 
@@ -2126,49 +3282,51 @@ function renderHome() {
 
           .map(
 
-            p => `
+            p => {
 
-            <div
-              class="project-mini"
-              data-searchable="${esc(
-                `${p.title} ${p.details || ""}`
-              )}"
-            >
+              const pct =
+                projectProgress(
+                  p
+                );
 
-              <div>
 
-                <div class="name">
-                  ${esc(p.title)}
+              return `
+
+                <div
+                  class="project-mini"
+                  data-searchable="${esc(
+                    `${p.title} ${p.details || ""}`
+                  )}"
+                >
+
+                  <div>
+
+                    <div class="name">
+                      ${esc(p.title)}
+                    </div>
+
+                    <div class="progress-track">
+
+                      <div
+                        class="progress-fill"
+                        style="width:${pct}%"
+                      ></div>
+
+                    </div>
+
+                  </div>
+
+                  <div class="pct">
+                    ${pct}%
+                  </div>
+
                 </div>
 
-                <div class="progress-track">
+              `;
 
-                  <div
-                    class="progress-fill"
-                    style="width:${clamp(
-                      p.progress,
-                      0,
-                      100
-                    )}%"
-                  ></div>
+            }
 
-                </div>
-
-              </div>
-
-              <div class="pct">
-
-                ${clamp(
-                  p.progress,
-                  0,
-                  100
-                )}%
-
-              </div>
-
-            </div>
-
-          `)
+          )
 
           .join("")
 
@@ -2190,7 +3348,7 @@ function renderHome() {
 
       .sort(
 
-        (a, b) =>
+        (a,b) =>
 
           (
             a.date
@@ -2271,16 +3429,20 @@ function renderWorkTasks() {
 
       .sort(
 
-        (a, b) =>
+        (a,b) =>
 
           Number(
-            Boolean(a.done)
+            Boolean(
+              a.done
+            )
           )
 
           -
 
           Number(
-            Boolean(b.done)
+            Boolean(
+              b.done
+            )
           )
 
           ||
@@ -2335,6 +3497,7 @@ function renderWorkTasks() {
         ?
 
         tasks
+
           .map(
 
             t => `
@@ -2342,7 +3505,7 @@ function renderWorkTasks() {
             <article
               class="item-card ${t.done ? "done" : ""}"
               data-searchable="${esc(
-                `${t.title} ${t.project || ""} ${t.priority || ""}`
+                `${t.title} ${t.project || ""} ${t.priority || ""} ${t.details || ""}`
               )}"
             >
 
@@ -2395,15 +3558,38 @@ function renderWorkTasks() {
 
                 </div>
 
+                ${
+                  t.details
+
+                    ?
+
+                    `<div class="item-meta">${esc(t.details)}</div>`
+
+                    :
+
+                    ""
+                }
+
               </div>
 
               <div class="item-actions">
+
+                <button
+                  class="mini-btn edit js-edit"
+                  data-type="work"
+                  data-id="${t.id}"
+                  type="button"
+                  title="Editar"
+                >
+                  ✎
+                </button>
 
                 <button
                   class="mini-btn delete js-delete"
                   data-type="work"
                   data-id="${t.id}"
                   type="button"
+                  title="Eliminar"
                 >
                   ×
                 </button>
@@ -2412,7 +3598,9 @@ function renderWorkTasks() {
 
             </article>
 
-          `)
+          `
+
+          )
 
           .join("")
 
@@ -2434,16 +3622,20 @@ function renderPersonal() {
 
       .sort(
 
-        (a, b) =>
+        (a,b) =>
 
           Number(
-            Boolean(a.done)
+            Boolean(
+              a.done
+            )
           )
 
           -
 
           Number(
-            Boolean(b.done)
+            Boolean(
+              b.done
+            )
           )
 
           ||
@@ -2470,6 +3662,7 @@ function renderPersonal() {
         ?
 
         items
+
           .map(
 
             p => `
@@ -2496,9 +3689,7 @@ function renderPersonal() {
 
                 <div class="item-meta">
 
-                  <span
-                    class="category-pill type-personal"
-                  >
+                  <span class="category-pill type-personal">
 
                     ${esc(
                       p.category
@@ -2514,9 +3705,13 @@ function renderPersonal() {
 
                   ${
                     p.time
+
                       ?
+
                       `<span>· ${esc(p.time)}</span>`
+
                       :
+
                       ""
                   }
 
@@ -2527,11 +3722,7 @@ function renderPersonal() {
 
                     ?
 
-                    `
-                    <div class="item-meta">
-                      ${esc(p.details)}
-                    </div>
-                    `
+                    `<div class="item-meta">${esc(p.details)}</div>`
 
                     :
 
@@ -2543,10 +3734,21 @@ function renderPersonal() {
               <div class="item-actions">
 
                 <button
+                  class="mini-btn edit js-edit"
+                  data-type="personal"
+                  data-id="${p.id}"
+                  type="button"
+                  title="Editar"
+                >
+                  ✎
+                </button>
+
+                <button
                   class="mini-btn delete js-delete"
                   data-type="personal"
                   data-id="${p.id}"
                   type="button"
+                  title="Eliminar"
                 >
                   ×
                 </button>
@@ -2555,7 +3757,9 @@ function renderPersonal() {
 
             </article>
 
-          `)
+          `
+
+          )
 
           .join("")
 
@@ -2583,7 +3787,7 @@ function renderProjects() {
 
           .sort(
 
-            (a, b) =>
+            (a,b) =>
 
               (
                 a.title
@@ -2600,120 +3804,284 @@ function renderProjects() {
 
           .map(
 
-            p => `
+            p => {
 
-            <article
-              class="project-card"
-              data-searchable="${esc(
-                `${p.title} ${p.details || ""}`
-              )}"
-            >
+              const pct =
+                projectProgress(
+                  p
+                );
 
-              <div class="project-card-head">
 
-                <div>
+              const mode =
+                p.progressMode
+                ||
+                "manual";
 
-                  <span class="section-kicker">
-                    PROYECTO
-                  </span>
 
-                  <h3>
-                    ${esc(p.title)}
-                  </h3>
+              const tasks =
+                tasksForProject(
+                  p.id
+                );
 
-                </div>
 
-                <button
-                  class="mini-btn delete js-delete"
-                  data-type="project"
-                  data-id="${p.id}"
-                  type="button"
+              const doneCount =
+                tasks.filter(
+                  task =>
+                    task.done
+                )
+                .length;
+
+
+              return `
+
+                <article
+                  class="project-card"
+                  data-searchable="${esc(
+                    `${p.title} ${p.details || ""} ${tasks.map(t => t.title).join(" ")}`
+                  )}"
                 >
-                  ×
-                </button>
 
-              </div>
+                  <div class="project-card-head">
 
-              <p>
+                    <div>
 
-                ${esc(
-                  p.details
-                  ||
-                  "Sin descripción todavía."
-                )}
+                      <span class="section-kicker">
+                        PROYECTO
+                      </span>
 
-              </p>
+                      <h3>
+                        ${esc(p.title)}
+                      </h3>
 
-              <div class="project-progress-row">
+                    </div>
 
-                <span>
-                  Avance
-                </span>
+                    <div class="mini-action-group">
 
-                <strong>
+                      <button
+                        class="mini-btn edit js-edit"
+                        data-type="project"
+                        data-id="${p.id}"
+                        type="button"
+                        title="Editar"
+                      >
+                        ✎
+                      </button>
 
-                  ${clamp(
-                    p.progress,
-                    0,
-                    100
-                  )}%
+                      <button
+                        class="mini-btn delete js-delete"
+                        data-type="project"
+                        data-id="${p.id}"
+                        type="button"
+                        title="Eliminar"
+                      >
+                        ×
+                      </button>
 
-                </strong>
+                    </div>
 
-              </div>
+                  </div>
 
-              <input
-                class="project-range js-project-range"
-                data-id="${p.id}"
-                type="range"
-                min="0"
-                max="100"
-                value="${clamp(
-                  p.progress,
-                  0,
-                  100
-                )}"
-              >
+                  <p>
+                    ${esc(
+                      p.details
+                      ||
+                      "Sin descripción todavía."
+                    )}
+                  </p>
 
-              <div class="project-footer">
+                  <div class="project-progress-row">
 
-                <span>
+                    <span>
+                      Avance
+                    </span>
 
-                  Meta:
+                    <strong>
+                      ${pct}%
+                    </strong>
 
-                  ${formatDate(
-                    p.target
-                  )}
+                  </div>
 
-                </span>
+                  <input
+                    class="project-range js-project-range"
+                    data-id="${p.id}"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value="${pct}"
+                    ${mode === "auto" ? "disabled" : ""}
+                  >
 
-                <span>
+                  <div class="project-mode-row">
 
-                  ${
-                    clamp(
-                      p.progress,
-                      0,
-                      100
-                    )
-                    >=
-                    100
+                    <span>
 
-                      ?
+                      ${
+                        mode ===
+                        "auto"
 
-                      "Completado ✓"
+                          ?
 
-                      :
+                          "Calculado por subtareas"
 
-                      "En progreso"
-                  }
+                          :
 
-                </span>
+                          "Avance manual"
+                      }
 
-              </div>
+                    </span>
 
-            </article>
+                    <button
+                      class="mode-btn js-toggle-progress-mode"
+                      data-id="${p.id}"
+                      type="button"
+                    >
 
-          `)
+                      ${
+                        mode ===
+                        "auto"
+
+                          ?
+
+                          "Cambiar a manual"
+
+                          :
+
+                          "Usar automático"
+                      }
+
+                    </button>
+
+                  </div>
+
+                  <div class="project-footer">
+
+                    <span>
+                      Meta:
+                      ${formatDate(
+                        p.target
+                      )}
+                    </span>
+
+                    <span>
+
+                      ${
+                        pct >=
+                        100
+
+                          ?
+
+                          "Completado ✓"
+
+                          :
+
+                          "En progreso"
+                      }
+
+                    </span>
+
+                  </div>
+
+                  <div class="project-task-zone">
+
+                    <div class="project-task-head">
+
+                      <div class="project-task-title">
+
+                        Subtareas ·
+                        ${doneCount}/${tasks.length}
+
+                      </div>
+
+                      <button
+                        class="text-btn js-add-project-task"
+                        data-project-id="${p.id}"
+                        type="button"
+                      >
+                        + Agregar
+                      </button>
+
+                    </div>
+
+                    <div class="project-task-list">
+
+                      ${
+                        tasks.length
+
+                          ?
+
+                          tasks
+
+                            .map(
+
+                              task => `
+
+                              <div
+                                class="project-task-row ${task.done ? "done" : ""}"
+                              >
+
+                                <input
+                                  class="js-toggle-project-task"
+                                  type="checkbox"
+                                  data-id="${task.id}"
+                                  ${task.done ? "checked" : ""}
+                                >
+
+                                <span class="project-task-name">
+                                  ${esc(task.title)}
+                                </span>
+
+                                <div class="project-task-actions">
+
+                                  <button
+                                    class="mini-btn edit js-edit"
+                                    data-type="projectTask"
+                                    data-id="${task.id}"
+                                    type="button"
+                                    title="Editar"
+                                  >
+                                    ✎
+                                  </button>
+
+                                  <button
+                                    class="mini-btn delete js-delete"
+                                    data-type="projectTask"
+                                    data-id="${task.id}"
+                                    type="button"
+                                    title="Eliminar"
+                                  >
+                                    ×
+                                  </button>
+
+                                </div>
+
+                              </div>
+
+                            `
+
+                            )
+
+                            .join("")
+
+                          :
+
+                          `
+                          <div class="compact-meta">
+                            Todavía no hay subtareas.
+                          </div>
+                          `
+                      }
+
+                    </div>
+
+                  </div>
+
+                </article>
+
+              `;
+
+            }
+
+          )
 
           .join("")
 
@@ -2739,7 +4107,7 @@ function renderEventCards(
 
       .sort(
 
-        (a, b) =>
+        (a,b) =>
 
           (
             a.date
@@ -2773,6 +4141,7 @@ function renderEventCards(
     ?
 
     list
+
       .map(
 
         item => `
@@ -2820,9 +4189,7 @@ function renderEventCards(
                   "type-training"
               }"
             >
-
               ${label}
-
             </span>
 
             <h3>
@@ -2856,10 +4223,21 @@ function renderEventCards(
           <div class="item-actions">
 
             <button
+              class="mini-btn edit js-edit"
+              data-type="${type}"
+              data-id="${item.id}"
+              type="button"
+              title="Editar"
+            >
+              ✎
+            </button>
+
+            <button
               class="mini-btn delete js-delete"
               data-type="${type}"
               data-id="${item.id}"
               type="button"
+              title="Eliminar"
             >
               ×
             </button>
@@ -2868,7 +4246,9 @@ function renderEventCards(
 
         </article>
 
-      `)
+      `
+
+      )
 
       .join("")
 
@@ -2941,6 +4321,7 @@ function renderIdeas() {
         ?
 
         state.ideas
+
           .map(
 
             i => `
@@ -2961,22 +4342,31 @@ function renderIdeas() {
               </h3>
 
               <p>
-
                 ${esc(
                   i.details
                   ||
                   "Sin descripción."
                 )}
-
               </p>
 
-              <div>
+              <div class="mini-action-group">
+
+                <button
+                  class="mini-btn edit js-edit"
+                  data-type="idea"
+                  data-id="${i.id}"
+                  type="button"
+                  title="Editar"
+                >
+                  ✎
+                </button>
 
                 <button
                   class="mini-btn delete js-delete"
                   data-type="idea"
                   data-id="${i.id}"
                   type="button"
+                  title="Eliminar"
                 >
                   ×
                 </button>
@@ -2985,7 +4375,9 @@ function renderIdeas() {
 
             </article>
 
-          `)
+          `
+
+          )
 
           .join("")
 
@@ -3010,6 +4402,7 @@ function renderNotes() {
         ?
 
         state.notes
+
           .map(
 
             n => `
@@ -3033,13 +4426,24 @@ function renderNotes() {
                 ${esc(n.details || "")}
               </p>
 
-              <div class="note-actions">
+              <div class="note-actions mini-action-group">
+
+                <button
+                  class="mini-btn edit js-edit"
+                  data-type="note"
+                  data-id="${n.id}"
+                  type="button"
+                  title="Editar"
+                >
+                  ✎
+                </button>
 
                 <button
                   class="mini-btn delete js-delete"
                   data-type="note"
                   data-id="${n.id}"
                   type="button"
+                  title="Eliminar"
                 >
                   ×
                 </button>
@@ -3048,7 +4452,9 @@ function renderNotes() {
 
             </article>
 
-          `)
+          `
+
+          )
 
           .join("")
 
@@ -3073,6 +4479,7 @@ function renderGoals() {
         ?
 
         state.goals
+
           .map(
 
             g => `
@@ -3098,14 +4505,29 @@ function renderGoals() {
 
                 </div>
 
-                <button
-                  class="mini-btn delete js-delete"
-                  data-type="goal"
-                  data-id="${g.id}"
-                  type="button"
-                >
-                  ×
-                </button>
+                <div class="mini-action-group">
+
+                  <button
+                    class="mini-btn edit js-edit"
+                    data-type="goal"
+                    data-id="${g.id}"
+                    type="button"
+                    title="Editar"
+                  >
+                    ✎
+                  </button>
+
+                  <button
+                    class="mini-btn delete js-delete"
+                    data-type="goal"
+                    data-id="${g.id}"
+                    type="button"
+                    title="Eliminar"
+                  >
+                    ×
+                  </button>
+
+                </div>
 
               </div>
 
@@ -3162,7 +4584,9 @@ function renderGoals() {
 
             </article>
 
-          `)
+          `
+
+          )
 
           .join("")
 
@@ -3308,10 +4732,8 @@ function renderStats() {
 
             sum
             +
-            clamp(
-              p.progress,
-              0,
-              100
+            projectProgress(
+              p
             ),
 
           0
@@ -3425,12 +4847,14 @@ function calendarEvents() {
 
 
   state.workTasks
+
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
+
     .forEach(
 
       t =>
@@ -3451,12 +4875,14 @@ function calendarEvents() {
 
 
   state.personal
+
     .filter(
       t =>
         !t.done
         &&
         t.date
     )
+
     .forEach(
 
       t =>
@@ -3477,10 +4903,12 @@ function calendarEvents() {
 
 
   state.meetings
+
     .filter(
       t =>
         t.date
     )
+
     .forEach(
 
       t =>
@@ -3501,10 +4929,12 @@ function calendarEvents() {
 
 
   state.trainings
+
     .filter(
       t =>
         t.date
     )
+
     .forEach(
 
       t =>
@@ -3603,7 +5033,9 @@ function renderCalendar() {
   ) {
 
     const d =
-      new Date(start);
+      new Date(
+        start
+      );
 
 
     d.setDate(
@@ -3614,7 +5046,9 @@ function renderCalendar() {
 
 
     const iso =
-      toISO(d);
+      toISO(
+        d
+      );
 
 
     const outside =
@@ -3640,21 +5074,30 @@ function renderCalendar() {
 
     const dots =
       allEvents
+
         .filter(
           e =>
             e.date ===
             iso
         )
+
         .slice(
           0,
           4
         )
+
         .map(
 
           e =>
-            `<span class="event-dot dot-${e.type}" title="${esc(e.title)}"></span>`
+            `
+            <span
+              class="event-dot dot-${e.type}"
+              title="${esc(e.title)}"
+            ></span>
+            `
 
         )
+
         .join("");
 
 
@@ -3722,6 +5165,15 @@ function renderCalendar() {
 
 function renderAll() {
 
+  if (
+    !$("#todayLabel")
+  ) {
+
+    return;
+
+  }
+
+
   $("#todayLabel")
     .textContent =
       localDateLabel();
@@ -3755,190 +5207,352 @@ function renderAll() {
 
 
 
+/* =========================================
+   MODAL CREAR / EDITAR
+========================================= */
+
+
 const modalConfigs = {
 
   work: {
+
     title:
       "Nueva tarea de trabajo",
+
+    editTitle:
+      "Editar tarea de trabajo",
+
     label:
       "Tarea",
+
     date:
       true,
+
     dateLabel:
       "Fecha",
+
     time:
       false,
+
     project:
       true,
+
     priority:
       true,
+
     category:
       false,
+
     progress:
       false,
+
     details:
       true
+
   },
+
 
   personal: {
+
     title:
       "Nueva actividad personal",
+
+    editTitle:
+      "Editar actividad personal",
+
     label:
       "Actividad",
+
     date:
       true,
+
     dateLabel:
       "Fecha",
+
     time:
       true,
+
     project:
       false,
+
     priority:
       false,
+
     category:
       true,
+
     progress:
       false,
+
     details:
       true
+
   },
+
 
   project: {
+
     title:
       "Nuevo proyecto",
+
+    editTitle:
+      "Editar proyecto",
+
     label:
       "Nombre del proyecto",
+
     date:
       true,
+
     dateLabel:
       "Fecha objetivo",
+
     time:
       false,
+
     project:
       false,
+
     priority:
       false,
+
     category:
       false,
+
     progress:
       true,
+
     details:
       true
+
   },
+
+
+  projectTask: {
+
+    title:
+      "Nueva subtarea",
+
+    editTitle:
+      "Editar subtarea",
+
+    label:
+      "Subtarea del proyecto",
+
+    date:
+      false,
+
+    dateLabel:
+      "Fecha",
+
+    time:
+      false,
+
+    project:
+      false,
+
+    priority:
+      false,
+
+    category:
+      false,
+
+    progress:
+      false,
+
+    details:
+      true
+
+  },
+
 
   meeting: {
+
     title:
       "Nueva reunión",
+
+    editTitle:
+      "Editar reunión",
+
     label:
       "Nombre de la reunión",
+
     date:
       true,
+
     dateLabel:
       "Fecha",
+
     time:
       true,
+
     project:
       false,
+
     priority:
       false,
+
     category:
       false,
+
     progress:
       false,
+
     details:
       true
+
   },
+
 
   training: {
+
     title:
       "Nueva capacitación",
+
+    editTitle:
+      "Editar capacitación",
+
     label:
       "Nombre de la capacitación",
+
     date:
       true,
+
     dateLabel:
       "Fecha",
+
     time:
       true,
+
     project:
       false,
+
     priority:
       false,
+
     category:
       false,
+
     progress:
       false,
+
     details:
       true
+
   },
+
 
   idea: {
+
     title:
       "Nueva idea",
+
+    editTitle:
+      "Editar idea",
+
     label:
       "Idea",
+
     date:
       false,
+
     dateLabel:
       "Fecha",
+
     time:
       false,
+
     project:
       false,
+
     priority:
       false,
+
     category:
       false,
+
     progress:
       false,
+
     details:
       true
+
   },
+
 
   note: {
+
     title:
       "Nueva nota",
+
+    editTitle:
+      "Editar nota",
+
     label:
       "Título",
+
     date:
       false,
+
     dateLabel:
       "Fecha",
+
     time:
       false,
+
     project:
       false,
+
     priority:
       false,
+
     category:
       false,
+
     progress:
       false,
+
     details:
       true
+
   },
 
+
   goal: {
+
     title:
       "Nueva meta",
+
+    editTitle:
+      "Editar meta",
+
     label:
       "Meta",
+
     date:
       true,
+
     dateLabel:
       "Fecha objetivo",
+
     time:
       false,
+
     project:
       false,
+
     priority:
       false,
+
     category:
       false,
+
     progress:
       true,
+
     details:
       true
+
   }
 
 };
@@ -3964,38 +5578,10 @@ function toggleField(
 
 
 
-function openModal(type) {
-
-  const cfg =
-    modalConfigs[type]
-    ||
-    modalConfigs.work;
-
+function resetModalFields() {
 
   $("#itemForm")
     .reset();
-
-
-  $("#itemType")
-    .value =
-      type;
-
-
-  $("#modalTitle")
-    .textContent =
-      cfg.title;
-
-
-  $("#titleFieldLabel")
-    .textContent =
-      cfg.label;
-
-
-  $("#dateFieldLabel")
-    .textContent =
-      cfg.dateLabel
-      ||
-      "Fecha";
 
 
   $("#itemPriority")
@@ -4013,6 +5599,68 @@ function openModal(type) {
       toISO(
         new Date()
       );
+
+}
+
+
+
+function configureModal(
+  type,
+  item = null
+) {
+
+  const cfg =
+    modalConfigs[type]
+    ||
+    modalConfigs.work;
+
+
+  resetModalFields();
+
+
+  $("#itemType")
+    .value =
+      type;
+
+
+  $("#modalTitle")
+    .textContent =
+
+      item
+
+        ?
+
+        cfg.editTitle
+
+        :
+
+        cfg.title;
+
+
+  $("#titleFieldLabel")
+    .textContent =
+      cfg.label;
+
+
+  $("#dateFieldLabel")
+    .textContent =
+      cfg.dateLabel
+      ||
+      "Fecha";
+
+
+  $("#saveItemBtn")
+    .textContent =
+
+      item
+
+        ?
+
+        "Guardar cambios"
+
+        :
+
+        "Guardar";
 
 
   toggleField(
@@ -4057,6 +5705,240 @@ function openModal(type) {
   );
 
 
+  if (item) {
+
+    $("#itemTitle")
+      .value =
+        item.title
+        ||
+        "";
+
+
+    $("#itemTime")
+      .value =
+        item.time
+        ||
+        "";
+
+
+    $("#itemProject")
+      .value =
+        item.project
+        ||
+        "";
+
+
+    $("#itemPriority")
+      .value =
+        item.priority
+        ||
+        "Media";
+
+
+    $("#itemCategory")
+      .value =
+        item.category
+        ||
+        "Personal";
+
+
+    $("#itemDetails")
+      .value =
+        item.details
+        ||
+        "";
+
+
+    if (
+      type ===
+      "project"
+    ) {
+
+      $("#itemDate")
+        .value =
+          item.target
+          ||
+          "";
+
+
+      $("#itemProgress")
+        .value =
+          clamp(
+            item.progress,
+            0,
+            100
+          );
+
+    }
+
+    else {
+
+      $("#itemDate")
+        .value =
+          item.date
+          ||
+          "";
+
+
+      $("#itemProgress")
+        .value =
+          clamp(
+            item.progress
+            ||
+            0,
+            0,
+            100
+          );
+
+    }
+
+  }
+
+}
+
+
+
+function openModal(type) {
+
+  editContext =
+    null;
+
+
+  if (
+    type !==
+    "projectTask"
+  ) {
+
+    currentProjectForTask =
+      null;
+
+  }
+
+
+  configureModal(
+    type
+  );
+
+
+  $("#modalBackdrop")
+    .hidden =
+      false;
+
+
+  document.body.style.overflow =
+    "hidden";
+
+
+  setTimeout(
+
+    () =>
+      $("#itemTitle")
+        .focus(),
+
+    0
+
+  );
+
+}
+
+
+
+function openProjectTaskModal(projectId) {
+
+  editContext =
+    null;
+
+
+  currentProjectForTask =
+    projectId;
+
+
+  configureModal(
+    "projectTask"
+  );
+
+
+  $("#modalBackdrop")
+    .hidden =
+      false;
+
+
+  document.body.style.overflow =
+    "hidden";
+
+
+  setTimeout(
+
+    () =>
+      $("#itemTitle")
+        .focus(),
+
+    0
+
+  );
+
+}
+
+
+
+function openEditModal(
+  type,
+  id
+) {
+
+  const key =
+    typeToCollection[type];
+
+
+  if (!key)
+    return;
+
+
+  const item =
+    state[key].find(
+
+      entry =>
+        entry.id ===
+        id
+
+    );
+
+
+  if (!item)
+    return;
+
+
+  editContext = {
+
+    type,
+
+    id,
+
+    key
+
+  };
+
+
+  currentProjectForTask =
+
+    type ===
+    "projectTask"
+
+      ?
+
+      item.projectId
+
+      :
+
+      null;
+
+
+  configureModal(
+    type,
+    item
+  );
+
+
   $("#modalBackdrop")
     .hidden =
       false;
@@ -4090,6 +5972,235 @@ function closeModal() {
   document.body.style.overflow =
     "";
 
+
+  editContext =
+    null;
+
+
+  currentProjectForTask =
+    null;
+
+}
+
+
+
+function formPayload(type) {
+
+  const title =
+    $("#itemTitle")
+      .value
+      .trim();
+
+
+  const common = {
+
+    title,
+
+    date:
+      $("#itemDate")
+        .value,
+
+    time:
+      $("#itemTime")
+        .value,
+
+    details:
+      $("#itemDetails")
+        .value
+        .trim()
+
+  };
+
+
+  switch (type) {
+
+    case "work":
+
+      return {
+
+        title,
+
+        project:
+          $("#itemProject")
+            .value
+            .trim()
+          ||
+          "General",
+
+        date:
+          common.date,
+
+        priority:
+          $("#itemPriority")
+            .value,
+
+        details:
+          common.details,
+
+        ...(
+          editContext
+
+            ?
+
+            {}
+
+            :
+
+            {
+              done:
+                false
+            }
+        )
+
+      };
+
+
+    case "personal":
+
+      return {
+
+        ...common,
+
+        category:
+          $("#itemCategory")
+            .value,
+
+        ...(
+          editContext
+
+            ?
+
+            {}
+
+            :
+
+            {
+              done:
+                false
+            }
+        )
+
+      };
+
+
+    case "project":
+
+      return {
+
+        title,
+
+        progress:
+          clamp(
+            $("#itemProgress")
+              .value,
+            0,
+            100
+          ),
+
+        target:
+          common.date,
+
+        details:
+          common.details,
+
+        ...(
+          editContext
+
+            ?
+
+            {}
+
+            :
+
+            {
+              progressMode:
+                "manual"
+            }
+        )
+
+      };
+
+
+    case "projectTask":
+
+      return {
+
+        title,
+
+        details:
+          common.details,
+
+        projectId:
+          currentProjectForTask,
+
+        ...(
+          editContext
+
+            ?
+
+            {}
+
+            :
+
+            {
+              done:
+                false
+            }
+        )
+
+      };
+
+
+    case "meeting":
+
+    case "training":
+
+      return common;
+
+
+    case "idea":
+
+    case "note":
+
+      return {
+
+        title,
+
+        details:
+          common.details
+
+      };
+
+
+    case "goal":
+
+      return {
+
+        title,
+
+        date:
+          common.date,
+
+        details:
+          common.details,
+
+        progress:
+          clamp(
+            $("#itemProgress")
+              .value,
+            0,
+            100
+          )
+
+      };
+
+
+    default:
+
+      return common;
+
+  }
+
 }
 
 
@@ -4121,6 +6232,27 @@ async function handleFormSubmit(event) {
   }
 
 
+  if (
+
+    type ===
+    "projectTask"
+
+    &&
+
+    !currentProjectForTask
+
+  ) {
+
+    showToast(
+      "No se pudo identificar el proyecto."
+    );
+
+
+    return;
+
+  }
+
+
   const button =
     $("#saveItemBtn");
 
@@ -4130,226 +6262,62 @@ async function handleFormSubmit(event) {
 
 
   button.textContent =
-    "Guardando...";
 
+    editContext
 
-  const common = {
+      ?
 
-    title,
+      "Actualizando..."
 
-    date:
-      $("#itemDate")
-        .value,
+      :
 
-    time:
-      $("#itemTime")
-        .value,
-
-    details:
-      $("#itemDetails")
-        .value
-        .trim()
-
-  };
+      "Guardando...";
 
 
   try {
 
-    if (
-      type ===
-      "work"
-    ) {
+    const payload =
+      formPayload(
+        type
+      );
 
-      await createItem(
 
-        "workTasks",
+    const collectionKey =
+      typeToCollection[type];
 
-        {
 
-          title,
+    if (editContext) {
 
-          project:
-            $("#itemProject")
-              .value
-              .trim()
-            ||
-            "General",
+      await updateItem(
 
-          date:
-            common.date,
+        collectionKey,
 
-          priority:
-            $("#itemPriority")
-              .value,
+        editContext.id,
 
-          details:
-            common.details,
+        payload
 
-          done:
-            false
+      );
 
-        }
 
+      showToast(
+        "Cambios guardados ♡"
       );
 
     }
 
-    else if (
-      type ===
-      "personal"
-    ) {
+    else {
 
       await createItem(
 
-        "personal",
+        collectionKey,
 
-        {
-
-          ...common,
-
-          category:
-            $("#itemCategory")
-              .value,
-
-          done:
-            false
-
-        }
+        payload
 
       );
 
-    }
 
-    else if (
-      type ===
-      "project"
-    ) {
-
-      await createItem(
-
-        "projects",
-
-        {
-
-          title,
-
-          progress:
-            clamp(
-              $("#itemProgress")
-                .value,
-              0,
-              100
-            ),
-
-          target:
-            common.date,
-
-          details:
-            common.details
-
-        }
-
-      );
-
-    }
-
-    else if (
-      type ===
-      "meeting"
-    ) {
-
-      await createItem(
-        "meetings",
-        common
-      );
-
-    }
-
-    else if (
-      type ===
-      "training"
-    ) {
-
-      await createItem(
-        "trainings",
-        common
-      );
-
-    }
-
-    else if (
-      type ===
-      "idea"
-    ) {
-
-      await createItem(
-
-        "ideas",
-
-        {
-
-          title,
-
-          details:
-            common.details
-
-        }
-
-      );
-
-    }
-
-    else if (
-      type ===
-      "note"
-    ) {
-
-      await createItem(
-
-        "notes",
-
-        {
-
-          title,
-
-          details:
-            common.details
-
-        }
-
-      );
-
-    }
-
-    else if (
-      type ===
-      "goal"
-    ) {
-
-      await createItem(
-
-        "goals",
-
-        {
-
-          title,
-
-          date:
-            common.date,
-
-          details:
-            common.details,
-
-          progress:
-            clamp(
-              $("#itemProgress")
-                .value,
-              0,
-              100
-            )
-
-        }
-
+      showToast(
+        "Guardado en Mi Rinconcito ♡"
       );
 
     }
@@ -4357,36 +6325,29 @@ async function handleFormSubmit(event) {
 
     closeModal();
 
-
-    showToast(
-      "Guardado en Mi Rinconcito ♡"
-    );
-
   }
 
   catch (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
-    if (
+    showToast(
+
       error.code ===
       "permission-denied"
-    ) {
 
-      showToast(
+        ?
+
         "Firestore bloqueó el guardado. Revisa las reglas."
-      );
 
-    }
+        :
 
-    else {
-
-      showToast(
         "No se pudo guardar. Intenta nuevamente."
-      );
 
-    }
+    );
 
   }
 
@@ -4431,6 +6392,40 @@ async function deleteItem(
 
   try {
 
+    if (
+      type ===
+      "project"
+    ) {
+
+      const children =
+        state.projectTasks.filter(
+
+          task =>
+            task.projectId ===
+            id
+
+        );
+
+
+      for (
+        const child
+        of
+        children
+      ) {
+
+        await removeItem(
+
+          "projectTasks",
+
+          child.id
+
+        );
+
+      }
+
+    }
+
+
     await removeItem(
       key,
       id
@@ -4445,7 +6440,9 @@ async function deleteItem(
 
   catch (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
     showToast(
@@ -4496,7 +6493,9 @@ async function toggleDone(
 
   catch (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
 
     showToast(
@@ -4507,6 +6506,49 @@ async function toggleDone(
 
 }
 
+
+
+async function toggleProjectTask(
+  id,
+  done
+) {
+
+  try {
+
+    await updateItem(
+
+      "projectTasks",
+
+      id,
+
+      {
+        done
+      }
+
+    );
+
+  }
+
+  catch (error) {
+
+    console.error(
+      error
+    );
+
+
+    showToast(
+      "No se pudo actualizar la subtarea."
+    );
+
+  }
+
+}
+
+
+
+/* =========================================
+   BUSCADOR
+========================================= */
 
 
 function applySearch() {
@@ -4525,8 +6567,7 @@ function applySearch() {
       .toLowerCase();
 
 
-  $$
-  (
+  $$(
     "[data-searchable]"
   )
   .forEach(
@@ -4547,9 +6588,11 @@ function applySearch() {
         "search-hidden",
 
         Boolean(
+
           q
           &&
           !text.includes(q)
+
         )
 
       );
@@ -4560,6 +6603,11 @@ function applySearch() {
 
 }
 
+
+
+/* =========================================
+   EVENTOS
+========================================= */
 
 
 function bindEvents() {
@@ -4588,7 +6636,8 @@ function bindEvents() {
   $$(".nav-item")
     .forEach(
 
-      btn =>
+      btn => {
+
         btn.addEventListener(
 
           "click",
@@ -4598,7 +6647,9 @@ function bindEvents() {
               btn.dataset.view
             )
 
-        )
+        );
+
+      }
 
     );
 
@@ -4608,12 +6659,15 @@ function bindEvents() {
 
       "click",
 
-      () =>
+      () => {
+
         $("#sidebar")
           .classList
           .toggle(
             "open"
-          )
+          );
+
+      }
 
     );
 
@@ -4763,6 +6817,25 @@ function bindEvents() {
       }
 
 
+      const editBtn =
+        event.target.closest(
+          ".js-edit"
+        );
+
+
+      if (editBtn) {
+
+        openEditModal(
+
+          editBtn.dataset.type,
+
+          editBtn.dataset.id
+
+        );
+
+      }
+
+
       const deleteBtn =
         event.target.closest(
           ".js-delete"
@@ -4782,6 +6855,36 @@ function bindEvents() {
       }
 
 
+      const addProjectTaskBtn =
+        event.target.closest(
+          ".js-add-project-task"
+        );
+
+
+      if (addProjectTaskBtn) {
+
+        openProjectTaskModal(
+          addProjectTaskBtn.dataset.projectId
+        );
+
+      }
+
+
+      const modeBtn =
+        event.target.closest(
+          ".js-toggle-progress-mode"
+        );
+
+
+      if (modeBtn) {
+
+        toggleProjectProgressMode(
+          modeBtn.dataset.id
+        );
+
+      }
+
+
       const filterBtn =
         event.target.closest(
           "[data-task-filter]"
@@ -4794,13 +6897,13 @@ function bindEvents() {
           filterBtn.dataset.taskFilter;
 
 
-        $$
-        (
+        $$(
           "[data-task-filter]"
         )
         .forEach(
 
-          btn =>
+          btn => {
+
             btn.classList.toggle(
 
               "active",
@@ -4808,12 +6911,15 @@ function bindEvents() {
               btn ===
               filterBtn
 
-            )
+            );
+
+          }
 
         );
 
 
         renderWorkTasks();
+
 
         applySearch();
 
@@ -4870,6 +6976,23 @@ function bindEvents() {
 
       if (
         event.target.matches(
+          ".js-toggle-project-task"
+        )
+      ) {
+
+        await toggleProjectTask(
+
+          event.target.dataset.id,
+
+          event.target.checked
+
+        );
+
+      }
+
+
+      if (
+        event.target.matches(
           ".js-project-range"
         )
       ) {
@@ -4899,7 +7022,9 @@ function bindEvents() {
 
         catch (error) {
 
-          console.error(error);
+          console.error(
+            error
+          );
 
 
           showToast(
@@ -4942,7 +7067,9 @@ function bindEvents() {
 
         catch (error) {
 
-          console.error(error);
+          console.error(
+            error
+          );
 
 
           showToast(
@@ -4965,18 +7092,37 @@ function bindEvents() {
     event => {
 
       if (
-
-        event.key ===
+        event.key !==
         "Escape"
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        !$("#modalBackdrop")
+          .hidden
+      ) {
+
+        closeModal();
+
+      }
+
+
+      if (
+
+        $("#backupBackdrop")
 
         &&
 
-        !$("#modalBackdrop")
+        !$("#backupBackdrop")
           .hidden
 
       ) {
 
-        closeModal();
+        closeBackupModal();
 
       }
 
