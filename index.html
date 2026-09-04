@@ -1,1 +1,1312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f7799b" />
 
+  <title>Mi Rinconcito</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Parisienne&display=swap"
+    rel="stylesheet"
+  >
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+<div class="app-shell">
+
+  <aside class="sidebar" id="sidebar">
+
+    <div class="brand">
+
+      <div class="brand-heart">♡</div>
+
+      <div>
+        <div class="brand-title">Mi Rinconcito</div>
+
+        <div class="brand-subtitle">
+          organiza · avanza · disfruta
+        </div>
+      </div>
+
+    </div>
+
+
+    <nav class="nav-list">
+
+      <button class="nav-item active" data-view="inicio">
+        <span>⌂</span>
+        Inicio
+      </button>
+
+      <button class="nav-item" data-view="agenda">
+        <span>▣</span>
+        Agenda
+      </button>
+
+      <button class="nav-item" data-view="trabajo">
+        <span>✓</span>
+        Tareas de trabajo
+      </button>
+
+      <button class="nav-item" data-view="personal">
+        <span>♥</span>
+        Cosas personales
+      </button>
+
+      <button class="nav-item" data-view="proyectos">
+        <span>▱</span>
+        Proyectos
+      </button>
+
+      <button class="nav-item" data-view="reuniones">
+        <span>♙</span>
+        Reuniones
+      </button>
+
+      <button class="nav-item" data-view="capacitaciones">
+        <span>✦</span>
+        Capacitaciones
+      </button>
+
+      <button class="nav-item" data-view="ideas">
+        <span>✧</span>
+        Ideas / Por crear
+      </button>
+
+      <button class="nav-item" data-view="notas">
+        <span>▤</span>
+        Notas
+      </button>
+
+      <button class="nav-item" data-view="metas">
+        <span>◎</span>
+        Metas
+      </button>
+
+      <button class="nav-item" data-view="estadisticas">
+        <span>▥</span>
+        Avance
+      </button>
+
+    </nav>
+
+
+    <div class="sidebar-quote">
+
+      <div class="quote-heart">
+        ♥
+      </div>
+
+      <p>
+        Disciplina también es amor propio.
+      </p>
+
+    </div>
+
+  </aside>
+
+
+
+  <main class="main-content">
+
+    <header class="topbar">
+
+      <button
+        class="menu-toggle"
+        id="menuToggle"
+        aria-label="Abrir menú"
+      >
+        ☰
+      </button>
+
+
+      <div class="topbar-title">
+
+        <h1 id="viewTitle">
+          Inicio
+        </h1>
+
+        <p id="todayLabel"></p>
+
+      </div>
+
+
+      <div class="top-actions">
+
+        <div class="search-box">
+
+          <span>⌕</span>
+
+          <input
+            id="globalSearch"
+            type="search"
+            placeholder="Buscar..."
+          >
+
+        </div>
+
+
+        <button
+          class="heart-button"
+          aria-label="Mi rincón favorito"
+        >
+          ♥
+        </button>
+
+      </div>
+
+    </header>
+
+
+
+    <!-- INICIO -->
+
+    <section class="view active" id="view-inicio">
+
+      <div class="hero-card">
+
+        <div>
+
+          <span class="eyebrow">
+            MI ESPACIO PERSONAL
+          </span>
+
+          <h2>
+            ¡Hola!
+            <span class="pink">♡</span>
+          </h2>
+
+          <p>
+            Todo lo importante de tu trabajo y tu vida,
+            ordenado en un solo lugar.
+          </p>
+
+        </div>
+
+
+        <div class="hero-art">
+
+          <span class="cup">☕</span>
+
+          <span class="sparkle s1">
+            ✦
+          </span>
+
+          <span class="sparkle s2">
+            ♡
+          </span>
+
+          <span class="sparkle s3">
+            ✧
+          </span>
+
+        </div>
+
+      </div>
+
+
+
+      <div
+        class="stats-grid"
+        id="homeStats"
+      ></div>
+
+
+
+      <div class="dashboard-grid">
+
+
+        <!-- PRIORIDADES -->
+
+        <div class="panel span-2">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                HOY
+              </span>
+
+              <h3>
+                Prioridades
+              </h3>
+
+            </div>
+
+
+            <button
+              class="text-btn"
+              data-open-add="work"
+            >
+              + Nueva tarea
+            </button>
+
+          </div>
+
+
+          <div
+            id="homePriorities"
+            class="compact-list"
+          ></div>
+
+        </div>
+
+
+
+        <!-- PROXIMO COMPROMISO -->
+
+        <div class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                PRÓXIMO
+              </span>
+
+              <h3>
+                Compromiso
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div id="nextCommitment"></div>
+
+        </div>
+
+
+
+        <!-- PROYECTOS -->
+
+        <div class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                PROYECTOS
+              </span>
+
+              <h3>
+                Avance
+              </h3>
+
+            </div>
+
+
+            <button
+              class="text-btn"
+              data-go="proyectos"
+            >
+              Ver todos
+            </button>
+
+          </div>
+
+
+          <div
+            id="homeProjects"
+            class="project-mini-list"
+          ></div>
+
+        </div>
+
+
+
+        <!-- PERSONAL -->
+
+        <div class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                MI VIDA
+              </span>
+
+              <h3>
+                Planes personales
+              </h3>
+
+            </div>
+
+
+            <button
+              class="text-btn"
+              data-open-add="personal"
+            >
+              + Agregar
+            </button>
+
+          </div>
+
+
+          <div
+            id="homePersonal"
+            class="compact-list"
+          ></div>
+
+        </div>
+
+
+
+        <!-- AGENDA RAPIDA -->
+
+        <div class="panel span-2">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                PRÓXIMOS DÍAS
+              </span>
+
+              <h3>
+                Agenda rápida
+              </h3>
+
+            </div>
+
+
+            <button
+              class="text-btn"
+              data-go="agenda"
+            >
+              Ver agenda
+            </button>
+
+          </div>
+
+
+          <div
+            id="homeUpcoming"
+            class="timeline-list"
+          ></div>
+
+        </div>
+
+
+
+        <!-- FRASE -->
+
+        <div class="panel soft-note">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                RECORDATORIO
+              </span>
+
+              <h3>
+                Mi rincón
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <p class="motivational">
+            “No necesito hacerlo todo hoy.
+            Solo avanzar en lo que realmente importa.”
+          </p>
+
+
+          <div class="flower-line">
+            ❀ · ♡ · ❀
+          </div>
+
+        </div>
+
+
+      </div>
+
+    </section>
+
+
+
+    <!-- AGENDA -->
+
+    <section class="view" id="view-agenda">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            CALENDARIO
+          </span>
+
+          <h2>
+            Mi agenda
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="meeting"
+        >
+          + Nuevo evento
+        </button>
+
+      </div>
+
+
+
+      <div class="agenda-layout">
+
+
+        <div class="panel calendar-panel">
+
+          <div class="calendar-header">
+
+            <button
+              id="prevMonth"
+              class="icon-btn"
+            >
+              ‹
+            </button>
+
+
+            <h3 id="calendarTitle"></h3>
+
+
+            <button
+              id="nextMonth"
+              class="icon-btn"
+            >
+              ›
+            </button>
+
+          </div>
+
+
+
+          <div class="weekday-grid">
+
+            <span>Lun</span>
+            <span>Mar</span>
+            <span>Mié</span>
+            <span>Jue</span>
+            <span>Vie</span>
+            <span>Sáb</span>
+            <span>Dom</span>
+
+          </div>
+
+
+          <div
+            id="calendarGrid"
+            class="calendar-grid"
+          ></div>
+
+        </div>
+
+
+
+        <div class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                AGENDA
+              </span>
+
+              <h3>
+                Próximos eventos
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="agendaEvents"
+            class="timeline-list"
+          ></div>
+
+        </div>
+
+
+      </div>
+
+    </section>
+
+
+
+    <!-- TRABAJO -->
+
+    <section class="view" id="view-trabajo">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            TRABAJO
+          </span>
+
+          <h2>
+            Tareas de trabajo
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="work"
+        >
+          + Nueva tarea
+        </button>
+
+      </div>
+
+
+
+      <div class="filter-row">
+
+        <button
+          class="filter-chip active"
+          data-task-filter="all"
+        >
+          Todas
+        </button>
+
+        <button
+          class="filter-chip"
+          data-task-filter="pending"
+        >
+          Pendientes
+        </button>
+
+        <button
+          class="filter-chip"
+          data-task-filter="done"
+        >
+          Completadas
+        </button>
+
+      </div>
+
+
+      <div
+        id="workTaskList"
+        class="cards-list"
+      ></div>
+
+    </section>
+
+
+
+    <!-- PERSONAL -->
+
+    <section class="view" id="view-personal">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            MI VIDA
+          </span>
+
+          <h2>
+            Cosas personales
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="personal"
+        >
+          + Nueva actividad
+        </button>
+
+      </div>
+
+
+
+      <div class="personal-intro panel">
+
+        <div class="personal-icon">
+          ♥
+        </div>
+
+
+        <div>
+
+          <h3>
+            También hay tiempo para ti
+          </h3>
+
+          <p>
+            Salidas, compras, panoramas, autocuidado,
+            trámites y todo lo que quieras hacer fuera del trabajo.
+          </p>
+
+        </div>
+
+      </div>
+
+
+
+      <div
+        id="personalList"
+        class="cards-list"
+      ></div>
+
+    </section>
+
+
+
+    <!-- PROYECTOS -->
+
+    <section class="view" id="view-proyectos">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            MIS PROYECTOS
+          </span>
+
+          <h2>
+            Proyectos
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="project"
+        >
+          + Nuevo proyecto
+        </button>
+
+      </div>
+
+
+      <div
+        id="projectList"
+        class="project-grid"
+      ></div>
+
+    </section>
+
+
+
+    <!-- REUNIONES -->
+
+    <section class="view" id="view-reuniones">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            AGENDA LABORAL
+          </span>
+
+          <h2>
+            Reuniones
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="meeting"
+        >
+          + Nueva reunión
+        </button>
+
+      </div>
+
+
+      <div
+        id="meetingList"
+        class="event-grid"
+      ></div>
+
+    </section>
+
+
+
+    <!-- CAPACITACIONES -->
+
+    <section class="view" id="view-capacitaciones">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            APRENDER Y ENSEÑAR
+          </span>
+
+          <h2>
+            Capacitaciones
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="training"
+        >
+          + Nueva capacitación
+        </button>
+
+      </div>
+
+
+      <div
+        id="trainingList"
+        class="event-grid"
+      ></div>
+
+    </section>
+
+
+
+    <!-- IDEAS -->
+
+    <section class="view" id="view-ideas">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            BANCO DE IDEAS
+          </span>
+
+          <h2>
+            Por crear / Ideas
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="idea"
+        >
+          + Nueva idea
+        </button>
+
+      </div>
+
+
+      <div
+        id="ideaList"
+        class="idea-grid"
+      ></div>
+
+    </section>
+
+
+
+    <!-- NOTAS -->
+
+    <section class="view" id="view-notas">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            POST-ITS
+          </span>
+
+          <h2>
+            Notas rápidas
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="note"
+        >
+          + Nueva nota
+        </button>
+
+      </div>
+
+
+      <div
+        id="noteList"
+        class="note-grid"
+      ></div>
+
+    </section>
+
+
+
+    <!-- METAS -->
+
+    <section class="view" id="view-metas">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            OBJETIVOS
+          </span>
+
+          <h2>
+            Metas
+          </h2>
+
+        </div>
+
+
+        <button
+          class="primary-btn"
+          data-open-add="goal"
+        >
+          + Nueva meta
+        </button>
+
+      </div>
+
+
+      <div
+        id="goalList"
+        class="goal-grid"
+      ></div>
+
+    </section>
+
+
+
+    <!-- ESTADISTICAS -->
+
+    <section class="view" id="view-estadisticas">
+
+      <div class="section-toolbar">
+
+        <div>
+
+          <span class="section-kicker">
+            RESUMEN
+          </span>
+
+          <h2>
+            Mi avance
+          </h2>
+
+        </div>
+
+      </div>
+
+
+
+      <div
+        id="progressSummary"
+        class="stats-grid large"
+      ></div>
+
+
+
+      <div class="dashboard-grid stats-detail">
+
+        <div class="panel span-2">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                PRODUCTIVIDAD
+              </span>
+
+              <h3>
+                Tareas de trabajo
+              </h3>
+
+            </div>
+
+          </div>
+
+          <div id="workProgress"></div>
+
+        </div>
+
+
+
+        <div class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                PERSONAL
+              </span>
+
+              <h3>
+                Actividades
+              </h3>
+
+            </div>
+
+          </div>
+
+          <div id="personalProgress"></div>
+
+        </div>
+
+
+
+        <div class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="section-kicker">
+                PROYECTOS
+              </span>
+
+              <h3>
+                Promedio de avance
+              </h3>
+
+            </div>
+
+          </div>
+
+          <div id="projectProgress"></div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+</div>
+
+
+
+<!-- MODAL -->
+
+<div
+  class="modal-backdrop"
+  id="modalBackdrop"
+  hidden
+>
+
+  <div class="modal">
+
+    <div class="modal-head">
+
+      <div>
+
+        <span class="section-kicker">
+          AGREGAR
+        </span>
+
+        <h2 id="modalTitle">
+          Nuevo elemento
+        </h2>
+
+      </div>
+
+
+      <button
+        class="icon-btn"
+        id="closeModal"
+      >
+        ×
+      </button>
+
+    </div>
+
+
+
+    <form
+      id="itemForm"
+      class="form-grid"
+    >
+
+      <input
+        type="hidden"
+        id="itemType"
+        value="work"
+      >
+
+
+      <label class="field full">
+
+        <span id="titleFieldLabel">
+          Título
+        </span>
+
+        <input
+          id="itemTitle"
+          type="text"
+          maxlength="120"
+          required
+          placeholder="Escribe aquí..."
+        >
+
+      </label>
+
+
+
+      <label
+        class="field"
+        id="dateFieldWrap"
+      >
+
+        <span>
+          Fecha
+        </span>
+
+        <input
+          id="itemDate"
+          type="date"
+        >
+
+      </label>
+
+
+
+      <label
+        class="field"
+        id="timeFieldWrap"
+      >
+
+        <span>
+          Hora
+        </span>
+
+        <input
+          id="itemTime"
+          type="time"
+        >
+
+      </label>
+
+
+
+      <label
+        class="field"
+        id="projectFieldWrap"
+      >
+
+        <span>
+          Proyecto
+        </span>
+
+        <input
+          id="itemProject"
+          type="text"
+          maxlength="80"
+          placeholder="Ej. APP HE"
+        >
+
+      </label>
+
+
+
+      <label
+        class="field"
+        id="priorityFieldWrap"
+      >
+
+        <span>
+          Prioridad
+        </span>
+
+        <select id="itemPriority">
+
+          <option value="Alta">
+            Alta
+          </option>
+
+          <option
+            value="Media"
+            selected
+          >
+            Media
+          </option>
+
+          <option value="Baja">
+            Baja
+          </option>
+
+        </select>
+
+      </label>
+
+
+
+      <label
+        class="field"
+        id="categoryFieldWrap"
+      >
+
+        <span>
+          Categoría
+        </span>
+
+        <select id="itemCategory">
+
+          <option value="Personal">
+            Personal
+          </option>
+
+          <option value="Social">
+            Social
+          </option>
+
+          <option value="Salida">
+            Salida
+          </option>
+
+          <option value="Salud">
+            Salud
+          </option>
+
+          <option value="Ocio">
+            Ocio
+          </option>
+
+          <option value="Viaje">
+            Viaje
+          </option>
+
+          <option value="Compras">
+            Compras
+          </option>
+
+          <option value="Autocuidado">
+            Autocuidado
+          </option>
+
+          <option value="Trámite">
+            Trámite
+          </option>
+
+        </select>
+
+      </label>
+
+
+
+      <label
+        class="field"
+        id="progressFieldWrap"
+      >
+
+        <span>
+          Avance (%)
+        </span>
+
+        <input
+          id="itemProgress"
+          type="number"
+          min="0"
+          max="100"
+          value="0"
+        >
+
+      </label>
+
+
+
+      <label
+        class="field full"
+        id="detailsFieldWrap"
+      >
+
+        <span>
+          Notas / detalles
+        </span>
+
+        <textarea
+          id="itemDetails"
+          rows="4"
+          maxlength="600"
+          placeholder="Información adicional..."
+        ></textarea>
+
+      </label>
+
+
+
+      <div class="form-actions full">
+
+        <button
+          type="button"
+          class="secondary-btn"
+          id="cancelModal"
+        >
+          Cancelar
+        </button>
+
+
+        <button
+          type="submit"
+          class="primary-btn"
+        >
+          Guardar
+        </button>
+
+      </div>
+
+    </form>
+
+  </div>
+
+</div>
+
+
+
+<div
+  class="toast"
+  id="toast"
+></div>
+
+
+<script src="app.js"></script>
+
+</body>
+</html>
